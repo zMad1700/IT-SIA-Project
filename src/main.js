@@ -10,7 +10,12 @@ let activityPeriod = 'monthly';
 let registeredActivityPeriod = 'monthly';
 let currentRoute = 'login';
 const ADMIN = { email: 'admin@gmail.com', password: 'admin123', name: 'Administrator', role: 'admin' };
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const supabase = supabaseUrl && supabaseKey ? window.supabase?.createClient(supabaseUrl, supabaseKey) : null;
+let accountsCache = [];
 const getAccounts = () => {
+  if (accountsCache.length) return accountsCache;
   try {
     const accounts = JSON.parse(localStorage.getItem('scholarHubAccounts') || '[]');
     return Array.isArray(accounts) ? accounts : [];
@@ -18,7 +23,33 @@ const getAccounts = () => {
     return [];
   }
 };
-const saveAccounts = accounts => localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
+const profileFields = account => ({
+  id: account.id, email: account.email, name: account.name, first_name: account.firstName,
+  middle_name: account.middleName, last_name: account.lastName, phone: account.phone,
+  sex: account.sex, birth_date: account.birthDate, purok: account.purok, barangay: account.barangay,
+  municipality: account.municipality, school: account.school, year_level: accountYearLevel(account),
+  course: account.course, scholar_type: account.scholarType, role: account.role, photo: account.photo,
+  bio: account.bio, requirements_status: account.requirementsStatus,
+  scholar_status: account.scholarStatus, added_by_admin: account.addedByAdmin
+});
+const accountFromProfile = profile => ({
+  id: profile.id, email: profile.email, name: profile.name, firstName: profile.first_name,
+  middleName: profile.middle_name, lastName: profile.last_name, phone: profile.phone, sex: profile.sex,
+  birthDate: profile.birth_date, purok: profile.purok, barangay: profile.barangay,
+  municipality: profile.municipality, school: profile.school, yearLevel: profile.year_level,
+  year: profile.year_level, course: profile.course, scholarType: profile.scholar_type, role: profile.role,
+  photo: profile.photo, bio: profile.bio, requirementsStatus: profile.requirements_status,
+  scholarStatus: profile.scholar_status, addedByAdmin: profile.added_by_admin, registeredAt: profile.created_at
+});
+const saveAccounts = accounts => {
+  accountsCache = accounts;
+  localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
+  if (!supabase) return;
+  const profiles = accounts.filter(account => account.id).map(profileFields);
+  if (profiles.length) supabase.from('profiles').upsert(profiles, { onConflict: 'id' }).then(({ error }) => {
+    if (error) console.error('Could not sync profiles:', error.message);
+  });
+};
 const getCurrentUser = () => { 
   try {
     return JSON.parse(localStorage.getItem('scholarHubCurrentUser') || 'null');
@@ -37,6 +68,21 @@ const updateCurrentUser = changes => {
   localStorage.setItem('scholarHubCurrentUser', JSON.stringify(user));
   if (user.email !== ADMIN.email) saveAccounts(getAccounts().map(account => account.email === previousUser.email ? { ...account, ...changes } : account));
   return user;
+};
+const loadCloudSession = async () => {
+  if (!supabase) return getCurrentUser();
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+  const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+  if (error || !profile) return null;
+  const account = accountFromProfile(profile);
+  localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  if (account.role === 'admin') {
+    const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+    accountsCache = (profiles || []).map(accountFromProfile);
+    localStorage.setItem('scholarHubAccounts', JSON.stringify(accountsCache));
+  } else accountsCache = [account];
+  return account;
 };
 const showAuthMessage = (message, type = 'error') => {
   authMessage = `<div class="auth-message ${type}">${icon(type === 'success' ? 'circle-check' : 'circle-alert', 16)} ${message}</div>`;
@@ -455,11 +501,18 @@ function bind(){
     alert('Your profile has been saved.');
     profilePage();
   });
-  document.querySelector('#password-form')?.addEventListener('submit', event => {
+  document.querySelector('#password-form')?.addEventListener('submit', async event => {
     event.preventDefault();
     const user = getCurrentUser();
     const current = document.querySelector('#current-password')?.value;
     const next = document.querySelector('#new-password').value;
+    if (supabase) {
+      if (next !== document.querySelector('#confirm-password').value) return alert('The new passwords do not match.');
+      const { error } = await supabase.auth.updateUser({ password: next });
+      if (error) return alert(error.message);
+      event.target.reset();
+      return alert('Your password has been changed.');
+    }
     const isLegacySocialAccount = Boolean(user.provider && !user.password);
     if (isLegacySocialAccount) {
       if (next !== document.querySelector('#confirm-password').value) return alert('The new passwords do not match.');
@@ -581,9 +634,51 @@ function bind(){
     row.style.opacity = '0';
     setTimeout(() => row.remove(), 160);
   });
-  document.querySelector('#login-form')?.addEventListener('submit',e=>{ e.preventDefault(); const loginId=document.querySelector('#login-email').value.trim().toLowerCase(), password=document.querySelector('#login-password').value; if(loginId===ADMIN.email && password===ADMIN.password){localStorage.setItem('scholarHubCurrentUser',JSON.stringify(ADMIN));return navigateTo('overview', true)} const account=getAccounts().find(item=>item.email===loginId); if(!account)return showAuthMessage('No account found for this email. Please register first.'); if(account.provider)return showAuthMessage(`This account uses ${account.provider}. Please continue with ${account.provider}.`); if(account.password!==password)return showAuthMessage('Incorrect password. Please try again.'); localStorage.setItem('scholarHubCurrentUser',JSON.stringify(account));navigateTo('overview', true); });
-  document.querySelector('#register-form')?.addEventListener('submit',e=>{ e.preventDefault(); const contact=document.querySelector('#register-contact').value.trim(), email=document.querySelector('#register-email').value.trim().toLowerCase(), yearLevel=document.querySelector('#year-level').value, accounts=getAccounts(); if(!/^\+?[0-9\s-]{7,20}$/.test(contact))return showAuthMessage('Please enter a valid contact number.'); if(email===ADMIN.email || accounts.some(item=>item.email===email))return showAuthMessage('This email already has an account. Please sign in instead.'); const account={email,phone:contact,password:document.querySelector('#register-password').value,name:`${document.querySelector('#first-name').value.trim()} ${document.querySelector('#middle-name').value.trim()} ${document.querySelector('#last-name').value.trim()}`.replace(/\s+/g,' ').trim(),lastName:document.querySelector('#last-name').value.trim(),firstName:document.querySelector('#first-name').value.trim(),middleName:document.querySelector('#middle-name').value.trim(),sex:document.querySelector('#sex').value,birthDate:document.querySelector('#birth-date').value,purok:document.querySelector('#purok').value.trim(),barangay:document.querySelector('#barangay').value.trim(),municipality:document.querySelector('#municipality').value.trim(),school:document.querySelector('#school').value.trim(),yearLevel,year:yearLevel,course:document.querySelector('#course').value.trim(),scholarType:document.querySelector('#scholar-type').value,role:'user',registeredAt:new Date().toISOString()};accounts.push(account);saveAccounts(accounts);localStorage.setItem('scholarHubCurrentUser',JSON.stringify(account));navigateTo('overview', true); });
-  document.querySelectorAll('.logout').forEach(x=>x.onclick=()=>{localStorage.removeItem('scholarHubCurrentUser');authMessage='';navigateTo('login', true)});
+  document.querySelector('#login-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const loginId = document.querySelector('#login-email').value.trim().toLowerCase();
+    const password = document.querySelector('#login-password').value;
+    if (supabase) {
+      const { error } = await supabase.auth.signInWithPassword({ email: loginId, password });
+      if (error) return showAuthMessage(error.message === 'Invalid login credentials' ? 'Incorrect email or password. Please try again.' : error.message);
+      const account = await loadCloudSession();
+      if (!account) return showAuthMessage('Your account profile is not ready yet. Please try again in a moment.');
+      return navigateTo('overview', true);
+    }
+    if (loginId === ADMIN.email && password === ADMIN.password) { localStorage.setItem('scholarHubCurrentUser', JSON.stringify(ADMIN)); return navigateTo('overview', true); }
+    const account = getAccounts().find(item => item.email === loginId);
+    if (!account) return showAuthMessage('No account found for this email. Please register first.');
+    if (account.password !== password) return showAuthMessage('Incorrect password. Please try again.');
+    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+    navigateTo('overview', true);
+  });
+  document.querySelector('#register-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const contact = document.querySelector('#register-contact').value.trim();
+    const email = document.querySelector('#register-email').value.trim().toLowerCase();
+    const yearLevel = document.querySelector('#year-level').value;
+    if (!/^\+?[0-9\s-]{7,20}$/.test(contact)) return showAuthMessage('Please enter a valid contact number.');
+    const account = {
+      email, phone: contact, password: document.querySelector('#register-password').value,
+      name: `${document.querySelector('#first-name').value.trim()} ${document.querySelector('#middle-name').value.trim()} ${document.querySelector('#last-name').value.trim()}`.replace(/\s+/g, ' ').trim(),
+      lastName: document.querySelector('#last-name').value.trim(), firstName: document.querySelector('#first-name').value.trim(), middleName: document.querySelector('#middle-name').value.trim(),
+      sex: document.querySelector('#sex').value, birthDate: document.querySelector('#birth-date').value,
+      purok: document.querySelector('#purok').value.trim(), barangay: document.querySelector('#barangay').value.trim(), municipality: document.querySelector('#municipality').value.trim(),
+      school: document.querySelector('#school').value.trim(), yearLevel, year: yearLevel, course: document.querySelector('#course').value.trim(), scholarType: document.querySelector('#scholar-type').value,
+      role: 'user', registeredAt: new Date().toISOString()
+    };
+    if (supabase) {
+      const { error } = await supabase.auth.signUp({ email, password: account.password, options: { data: profileFields(account) } });
+      if (error) return showAuthMessage(error.message);
+      authMessage = '';
+      showAuthMessage('Account created successfully. You can now sign in.', 'success');
+      return authView('login');
+    }
+    const accounts = getAccounts();
+    if (email === ADMIN.email || accounts.some(item => item.email === email)) return showAuthMessage('This email already has an account. Please sign in instead.');
+    accounts.push(account); saveAccounts(accounts); localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account)); navigateTo('overview', true);
+  });
+  document.querySelectorAll('.logout').forEach(x=>x.onclick=async()=>{ if (supabase) await supabase.auth.signOut(); localStorage.removeItem('scholarHubCurrentUser'); accountsCache=[]; authMessage=''; navigateTo('login', true); });
 }
 function helpCenterPage() {
   currentRoute = 'help-center';
@@ -648,11 +743,13 @@ function renderScholarActivityChart() {
   document.querySelector('#activity-scholar-type').onchange = event => { activityScholarType = event.target.value; renderScholarActivityChart(); };
   document.querySelector('#activity-period').onchange = event => { activityPeriod = event.target.value; renderScholarActivityChart(); };
 }
-function renderRoute(route = 'overview') {
+async function renderRoute(route = 'overview') {
   const session = getCurrentUser();
-  const account = session?.email === ADMIN.email && session?.role === 'admin'
-    ? ADMIN
-    : getAccounts().find(item => item.email === session?.email);
+  const account = supabase
+    ? await loadCloudSession()
+    : session?.email === ADMIN.email && session?.role === 'admin'
+      ? ADMIN
+      : getAccounts().find(item => item.email === session?.email);
   if (!account) {
     localStorage.removeItem('scholarHubCurrentUser');
     return authView('login');
