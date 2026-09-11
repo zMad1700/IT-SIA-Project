@@ -135,8 +135,7 @@ export const loadCloudSession = async (remember = true) => {
     if (account.role === 'admin') {
       const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
       const accounts = (profiles || []).map(accountFromProfile);
-      setAccountsCache(accounts);
-      localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
+      saveAccounts(accounts);
     } else {
       setAccountsCache([account]);
     }

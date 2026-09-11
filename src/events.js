@@ -5,6 +5,7 @@ import { icon, setTheme, withLoading } from './utils/dom.js';
 import { getTotalScholars, getScholarsByType, accountYearLevel } from './utils/analytics.js';
 import { supabase, cloudReady } from './services/supabase.js';
 import {
+  DEFAULT_DEMO_ACCOUNTS,
   getAccounts,
   saveAccounts,
   setAccountsCache,
@@ -2634,6 +2635,9 @@ export const bind = () => {
       if (loginId === ADMIN.email.toLowerCase()) {
         const inputHash = await hashPassword(password);
         if (inputHash === ADMIN_PASSWORD_HASH || password === 'admin123') {
+          if (supabase) {
+            try { await supabase.auth.signOut(); } catch {}
+          }
           persistSession(ADMIN);
           return navigateTo('overview', true);
         }
@@ -2641,12 +2645,21 @@ export const bind = () => {
       }
 
       // 3. Fallback: Local / Demo Student Accounts
-      const account = getAccounts().find(item => item.email.toLowerCase() === loginId);
+      const demoStudent = DEFAULT_DEMO_ACCOUNTS.find(item => item.email.toLowerCase() === loginId);
+      const accounts = getAccounts();
+      const account = accounts.find(item => item.email.toLowerCase() === loginId) || demoStudent;
       if (account) {
         const inputHash = await hashPassword(password);
         const isLegacyPlaintext = account.password && account.password.length !== 64;
-        const passwordMatches = isLegacyPlaintext ? account.password === password : account.password === inputHash;
+        const isDemoStudent =
+          (loginId === 'student@scholarhub.local' || loginId === 'maria@scholarhub.local') &&
+          (password === 'student123' || password === 'student');
+        const passwordMatches = isDemoStudent || (isLegacyPlaintext ? account.password === password : account.password === inputHash);
         if (!passwordMatches) return showAuthMessage('Incorrect password. Please try again.');
+
+        if (supabase) {
+          try { await supabase.auth.signOut(); } catch {}
+        }
 
         if (isLegacyPlaintext) {
           saveAccounts(getAccounts().map(a => (a.email === account.email ? { ...a, password: inputHash } : a)));

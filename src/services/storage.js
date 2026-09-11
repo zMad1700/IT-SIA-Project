@@ -6,8 +6,9 @@ let accountsCache = [];
 let scholarshipCatalog = [];
 let applicationsCache = [];
 
-const DEFAULT_DEMO_ACCOUNTS = [
+export const DEFAULT_DEMO_ACCOUNTS = [
   {
+    id: 'demo-student-juan',
     email: 'student@scholarhub.local',
     password: '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', // SHA-256 for 'student123'
     name: 'Juan Dela Cruz',
@@ -32,6 +33,7 @@ const DEFAULT_DEMO_ACCOUNTS = [
     registeredAt: '2026-09-01T08:00:00.000Z'
   },
   {
+    id: 'demo-student-maria',
     email: 'maria@scholarhub.local',
     password: '703b0a3d6ad75b649a28adde7d83c6251da457549263bc7ff45ec709b0a8448b', // SHA-256 for 'student123'
     name: 'Maria Clara Santos',
@@ -58,28 +60,84 @@ const DEFAULT_DEMO_ACCOUNTS = [
 ];
 
 export const getAccounts = () => {
-  if (accountsCache.length) return accountsCache;
-  try {
-    const raw = localStorage.getItem('scholarHubAccounts');
-    if (!raw) {
-      localStorage.setItem('scholarHubAccounts', JSON.stringify(DEFAULT_DEMO_ACCOUNTS));
-      accountsCache = DEFAULT_DEMO_ACCOUNTS;
-      return DEFAULT_DEMO_ACCOUNTS;
-    }
-    const accounts = JSON.parse(raw);
-    return Array.isArray(accounts) && accounts.length ? accounts : DEFAULT_DEMO_ACCOUNTS;
-  } catch {
-    return DEFAULT_DEMO_ACCOUNTS;
+  let list = accountsCache;
+  if (!list || !list.length) {
+    try {
+      const raw = localStorage.getItem('scholarHubAccounts');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length) {
+          list = parsed;
+        }
+      }
+    } catch {}
   }
+
+  if (!Array.isArray(list) || !list.length) {
+    list = [...DEFAULT_DEMO_ACCOUNTS];
+  } else {
+    const emailIndexMap = new Map();
+    list.forEach((acc, idx) => {
+      if (acc && acc.email) emailIndexMap.set(acc.email.toLowerCase(), idx);
+    });
+
+    DEFAULT_DEMO_ACCOUNTS.forEach(demo => {
+      const existingIdx = emailIndexMap.get(demo.email.toLowerCase());
+      if (existingIdx === undefined) {
+        list.push(demo);
+      } else if (!list[existingIdx].password) {
+        list[existingIdx] = { ...demo, ...list[existingIdx], password: demo.password };
+      }
+    });
+  }
+
+  accountsCache = list;
+  return accountsCache;
 };
 
 export const saveAccounts = accounts => {
-  accountsCache = accounts;
-  localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
+  const list = Array.isArray(accounts) ? [...accounts] : [];
+  const emailIndexMap = new Map();
+  list.forEach((acc, idx) => {
+    if (acc && acc.email) emailIndexMap.set(acc.email.toLowerCase(), idx);
+  });
+
+  DEFAULT_DEMO_ACCOUNTS.forEach(demo => {
+    const existingIdx = emailIndexMap.get(demo.email.toLowerCase());
+    if (existingIdx === undefined) {
+      list.push(demo);
+    } else if (!list[existingIdx].password) {
+      list[existingIdx] = { ...demo, ...list[existingIdx], password: demo.password };
+    }
+  });
+
+  accountsCache = list;
+  try {
+    localStorage.setItem('scholarHubAccounts', JSON.stringify(list));
+  } catch (err) {
+    console.warn('Failed to persist accounts to localStorage:', err);
+  }
 };
 
 export const setAccountsCache = accounts => {
-  accountsCache = accounts;
+  if (Array.isArray(accounts) && accounts.length) {
+    const list = [...accounts];
+    const emailIndexMap = new Map();
+    list.forEach((acc, idx) => {
+      if (acc && acc.email) emailIndexMap.set(acc.email.toLowerCase(), idx);
+    });
+    DEFAULT_DEMO_ACCOUNTS.forEach(demo => {
+      const existingIdx = emailIndexMap.get(demo.email.toLowerCase());
+      if (existingIdx === undefined) {
+        list.push(demo);
+      } else if (!list[existingIdx].password) {
+        list[existingIdx] = { ...demo, ...list[existingIdx], password: demo.password };
+      }
+    });
+    accountsCache = list;
+  } else {
+    accountsCache = [...DEFAULT_DEMO_ACCOUNTS];
+  }
 };
 
 export const getScholarshipCatalog = () => {
