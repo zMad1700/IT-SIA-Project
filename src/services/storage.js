@@ -87,9 +87,50 @@ export const setScholarshipCatalog = catalog => {
   scholarshipCatalog = catalog;
 };
 
-export const getApplicationsCache = () => applicationsCache;
+const DEFAULT_DEMO_APPLICATIONS = [
+  {
+    id: 'app-demo-1',
+    scholarship_id: 1,
+    student_id: 'student@scholarhub.local',
+    student_email: 'student@scholarhub.local',
+    student_name: 'Juan Dela Cruz',
+    school: 'Cor Jesu College',
+    course: 'BS Information Technology',
+    year_level: '3rd Year',
+    gwa: '1.45',
+    household_income: 'PHP 150,000 - PHP 250,000',
+    statement: 'Committed to finishing my IT degree and leading community digital literacy initiatives.',
+    document_url: 'grades-cog-certified.pdf',
+    status: 'Submitted',
+    remarks: 'Application submitted and currently under evaluation by the scholarship committee.',
+    created_at: '2026-09-08T09:00:00.000Z'
+  }
+];
+
+export const getApplicationsCache = () => {
+  if (applicationsCache.length) return applicationsCache;
+  try {
+    const raw = localStorage.getItem('scholarHubApplications');
+    if (!raw) {
+      localStorage.setItem('scholarHubApplications', JSON.stringify(DEFAULT_DEMO_APPLICATIONS));
+      applicationsCache = DEFAULT_DEMO_APPLICATIONS;
+      return DEFAULT_DEMO_APPLICATIONS;
+    }
+    const apps = JSON.parse(raw);
+    applicationsCache = Array.isArray(apps) && apps.length ? apps : DEFAULT_DEMO_APPLICATIONS;
+    return applicationsCache;
+  } catch {
+    return DEFAULT_DEMO_APPLICATIONS;
+  }
+};
+
 export const setApplicationsCache = cache => {
   applicationsCache = cache;
+};
+
+export const saveApplicationsCache = applications => {
+  applicationsCache = applications;
+  localStorage.setItem('scholarHubApplications', JSON.stringify(applications));
 };
 
 export const getRenewalDeadlines = () => {
@@ -116,11 +157,47 @@ export const saveRenewalSchedules = schedules => {
   localStorage.setItem('scholarHubRenewalSchedules', JSON.stringify(schedules));
 };
 
+const DEFAULT_ANNOUNCEMENTS = [
+  {
+    id: 'ann-demo-1',
+    category: 'Renewal Deadline',
+    targetSchool: null,
+    message: 'Official renewal period for Academic Year 2026-2027 is now open. All scholars must submit verification documents before October 15, 2026.',
+    pinned: true,
+    createdAt: '2026-09-10T08:00:00.000Z',
+    reactions: { like: ['student@scholarhub.local'], heart: [] }
+  },
+  {
+    id: 'ann-demo-2',
+    category: 'Document Verification',
+    targetSchool: null,
+    message: 'Partner university coordinators will conduct on-campus document verification according to the confirmed appointment schedule.',
+    pinned: false,
+    createdAt: '2026-09-11T09:30:00.000Z',
+    reactions: { like: [], heart: ['student@scholarhub.local'] }
+  },
+  {
+    id: 'ann-demo-3',
+    category: 'Disbursement Notice',
+    targetSchool: null,
+    message: 'Stipend disbursement for the first semester is scheduled to be released through authorized partner banks on September 30, 2026.',
+    pinned: false,
+    createdAt: '2026-09-11T14:00:00.000Z',
+    reactions: { like: [], heart: [] }
+  }
+];
+
 export const getAnnouncements = () => {
   try {
-    return JSON.parse(localStorage.getItem('scholarHubAnnouncements') || '[]');
+    const raw = localStorage.getItem('scholarHubAnnouncements');
+    if (!raw) {
+      localStorage.setItem('scholarHubAnnouncements', JSON.stringify(DEFAULT_ANNOUNCEMENTS));
+      return DEFAULT_ANNOUNCEMENTS;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_ANNOUNCEMENTS;
   } catch {
-    return [];
+    return DEFAULT_ANNOUNCEMENTS;
   }
 };
 
@@ -128,11 +205,66 @@ export const saveAnnouncements = posts => {
   localStorage.setItem('scholarHubAnnouncements', JSON.stringify(posts));
 };
 
+const DEFAULT_HELP_REQUESTS = [
+  {
+    id: 'help-demo-1',
+    userEmail: 'student@scholarhub.local',
+    userName: 'Juan Dela Cruz',
+    category: 'Document Verification',
+    subject: 'Clarification regarding Certificate of Grades (COG) format',
+    message: 'Good day, our university registrar provides e-signed digital copies of the Certificate of Grades. Will this be accepted for the renewal document submission or is an ink-signed wet stamp strictly required?',
+    status: 'Resolved',
+    createdAt: '2026-09-09T10:15:00.000Z',
+    adminReply: 'Official e-signed COGs with a verifiable university digital QR seal or registrar watermark are fully accepted. Please ensure the total units and semester GPA are clearly legible.',
+    repliedAt: '2026-09-09T14:30:00.000Z',
+    thread: [
+      {
+        sender: 'student',
+        senderName: 'Juan Dela Cruz',
+        text: 'Good day, our university registrar provides e-signed digital copies of the Certificate of Grades. Will this be accepted for the renewal document submission or is an ink-signed wet stamp strictly required?',
+        createdAt: '2026-09-09T10:15:00.000Z'
+      },
+      {
+        sender: 'admin',
+        senderName: 'Scholarship Office',
+        text: 'Official e-signed COGs with a verifiable university digital QR seal or registrar watermark are fully accepted. Please ensure the total units and semester GPA are clearly legible.',
+        createdAt: '2026-09-09T14:30:00.000Z'
+      }
+    ]
+  },
+  {
+    id: 'help-demo-2',
+    userEmail: 'student@scholarhub.local',
+    userName: 'Juan Dela Cruz',
+    category: 'Disbursement Concern',
+    subject: 'Inquiry regarding 1st Semester stipend disbursement schedule',
+    message: 'Hello, may I inquire when the initial stipend release for approved scholars under the Tertiary Education Grant will take place?',
+    status: 'Pending',
+    createdAt: '2026-09-11T11:00:00.000Z',
+    adminReply: null,
+    repliedAt: null,
+    thread: [
+      {
+        sender: 'student',
+        senderName: 'Juan Dela Cruz',
+        text: 'Hello, may I inquire when the initial stipend release for approved scholars under the Tertiary Education Grant will take place?',
+        createdAt: '2026-09-11T11:00:00.000Z'
+      }
+    ]
+  }
+];
+
 export const getHelpRequests = () => {
   try {
-    return JSON.parse(localStorage.getItem('scholarHubHelpRequests') || '[]');
+    const raw = localStorage.getItem('scholarHubHelpRequests');
+    if (!raw) {
+      localStorage.setItem('scholarHubHelpRequests', JSON.stringify(DEFAULT_HELP_REQUESTS));
+      return DEFAULT_HELP_REQUESTS;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length ? parsed : DEFAULT_HELP_REQUESTS;
   } catch {
-    return [];
+    return DEFAULT_HELP_REQUESTS;
   }
 };
 
@@ -242,6 +374,52 @@ export const markNotificationsAsRead = user => {
   saveNotifications(updated);
 };
 
+export const markNotificationAsRead = (notifId, user) => {
+  if (!user?.email || !notifId) return;
+  const all = getNotifications();
+  const updated = all.map(item => {
+    if (String(item.id) === String(notifId)) {
+      const readBy = Array.isArray(item.readBy) ? item.readBy : [];
+      if (!readBy.includes(user.email)) {
+        return { ...item, readBy: [...readBy, user.email] };
+      }
+    }
+    return item;
+  });
+  saveNotifications(updated);
+};
+
+export const toggleNotificationRead = (notifId, user) => {
+  if (!user?.email || !notifId) return;
+  const all = getNotifications();
+  const updated = all.map(item => {
+    if (String(item.id) === String(notifId)) {
+      const readBy = Array.isArray(item.readBy) ? item.readBy : [];
+      if (readBy.includes(user.email)) {
+        return { ...item, readBy: readBy.filter(e => e !== user.email) };
+      } else {
+        return { ...item, readBy: [...readBy, user.email] };
+      }
+    }
+    return item;
+  });
+  saveNotifications(updated);
+};
+
+export const deleteNotification = notifId => {
+  if (!notifId) return;
+  const all = getNotifications();
+  const updated = all.filter(item => String(item.id) !== String(notifId));
+  saveNotifications(updated);
+};
+
+export const clearReadNotifications = user => {
+  if (!user?.email) return;
+  const all = getNotifications();
+  const updated = all.filter(item => !Array.isArray(item.readBy) || !item.readBy.includes(user.email));
+  saveNotifications(updated);
+};
+
 export const getUnreadNotificationsCount = user => {
   if (!user?.email) return 0;
   const userNotifs = getUserNotifications(user);
@@ -287,15 +465,46 @@ export const loadCloudWorkspace = async account => {
   }
 
   if (!helpResult.error) {
-    const requests = (helpResult.data || []).map(item => ({
-      id: String(item.id),
-      userEmail: item.profiles?.email || '',
-      userName: item.profiles?.name || item.profiles?.email || 'Student',
-      subject: item.subject,
-      message: item.message,
-      status: item.status,
-      createdAt: item.created_at
-    }));
+    const requests = (helpResult.data || []).map(item => {
+      let thread = [];
+      try {
+        thread = Array.isArray(item.thread) ? item.thread : (item.thread ? JSON.parse(item.thread) : []);
+      } catch {
+        thread = [];
+      }
+      if (!thread.length) {
+        if (item.message) {
+          thread.push({
+            sender: 'student',
+            senderName: item.profiles?.name || item.profiles?.email || 'Student',
+            text: item.message,
+            createdAt: item.created_at
+          });
+        }
+        if (item.admin_reply) {
+          thread.push({
+            sender: 'admin',
+            senderName: 'Scholarship Office',
+            text: item.admin_reply,
+            createdAt: item.replied_at || item.created_at
+          });
+        }
+      }
+      return {
+        id: String(item.id),
+        userEmail: item.profiles?.email || '',
+        userName: item.profiles?.name || item.profiles?.email || 'Student',
+        category: item.category || 'General Concern',
+        subject: item.subject,
+        message: item.message,
+        status: item.status,
+        createdAt: item.created_at,
+        adminReply: item.admin_reply,
+        repliedAt: item.replied_at,
+        archivedAt: item.archived_at,
+        thread
+      };
+    });
     saveHelpRequests(requests);
   }
 

@@ -46,6 +46,13 @@ export const loginForm = () => `<form class="modern-auth-form" id="login-form">
     </div>
   </div>
 
+  <div class="login-options-row">
+    <label class="modern-checkbox-label remember-me-label">
+      <input type="checkbox" id="login-remember-me" checked>
+      <span>Remember this device</span>
+    </label>
+  </div>
+
   <button class="primary-pill-btn full-width-btn" type="submit">
     <span>Sign in to Workspace</span>
     ${icon('arrow-right', 16)}
@@ -162,12 +169,29 @@ export const registerForm = () => `<form class="modern-auth-form register-form-w
       <label>Official Email Address</label>
       <input id="register-email" class="pill-input" type="email" placeholder="student@university.edu" required>
     </div>
-    <div class="modern-field wide-field">
+    <div class="modern-field">
       <label>Create Password</label>
       <div class="input-with-icon password-wrap">
         <input id="register-password" class="pill-input" type="password" minlength="6" placeholder="At least 6 characters" required>
         <button type="button" class="show-pass modern-show-pass" aria-label="Show password">${icon('eye', 16)}</button>
       </div>
+      <div class="password-strength-container" id="register-password-strength" hidden>
+        <div class="strength-bar-track">
+          <div class="strength-bar-fill" id="register-strength-fill"></div>
+        </div>
+        <div class="strength-label-row">
+          <span class="strength-label-text">Strength:</span>
+          <span class="strength-score-text" id="register-strength-score">Weak</span>
+        </div>
+      </div>
+    </div>
+    <div class="modern-field">
+      <label>Confirm Password</label>
+      <div class="input-with-icon password-wrap">
+        <input id="register-confirm-password" class="pill-input" type="password" minlength="6" placeholder="Re-enter password" required>
+        <button type="button" class="show-pass modern-show-pass" aria-label="Show password">${icon('eye', 16)}</button>
+      </div>
+      <div class="password-match-hint" id="register-match-hint"></div>
     </div>
   </div>
 
@@ -182,17 +206,78 @@ export const registerForm = () => `<form class="modern-auth-form register-form-w
   </button>
 </form>`;
 
-export const forgotForm = () => `<div class="modern-auth-form">
-  <div class="auth-message-modern warning">
-    ${icon('alert-circle', 16)}
-    <span>Password reset email service is currently in offline demo mode. Please reach out to the scholarship coordinator.</span>
+export const forgotForm = () => `<form class="modern-auth-form" id="forgot-form">
+  ${authMessage}
+  <button class="pill-back-btn" type="button" data-view="login">
+    ${icon('arrow-left', 14)} <span>Back to sign in</span>
+  </button>
+
+  <div class="recovery-mode-card">
+    <div class="recovery-mode-icon">${icon('shield-alert', 20)}</div>
+    <div>
+      <h3 class="recovery-mode-title">Self-Service Account Recovery</h3>
+      <p class="recovery-mode-desc">Enter your registered student email and verification details to reset your password or submit an expedited recovery ticket to administrators.</p>
+    </div>
   </div>
-  <p class="auth-foot-text">
-    <button type="button" class="pill-back-btn" data-view="login">
-      ${icon('arrow-left', 14)} <span>Back to sign in</span>
+
+  <div class="modern-field">
+    <label>Registered Student Email</label>
+    <div class="input-with-icon">
+      <span class="field-leading-icon">${icon('mail', 16)}</span>
+      <input id="forgot-email" class="pill-input icon-padded" type="email" placeholder="student@scholarhub.local" required>
+    </div>
+  </div>
+
+  <div class="modern-field">
+    <label>Registered Mobile Number</label>
+    <div class="input-with-icon">
+      <span class="field-leading-icon">${icon('phone', 16)}</span>
+      <input id="forgot-phone" class="pill-input icon-padded" type="tel" placeholder="09XX XXX XXXX" required>
+    </div>
+    <span class="field-helper-text">Used to verify student identity against official account records.</span>
+  </div>
+
+  <div class="modern-field">
+    <label>New Password</label>
+    <div class="input-with-icon password-wrap">
+      <span class="field-leading-icon">${icon('lock', 16)}</span>
+      <input id="forgot-password" class="pill-input icon-padded" type="password" minlength="6" placeholder="Enter new password" required>
+      <button type="button" class="show-pass modern-show-pass" aria-label="Show password">${icon('eye', 16)}</button>
+    </div>
+    <div class="password-strength-container" id="forgot-password-strength" hidden>
+      <div class="strength-bar-track">
+        <div class="strength-bar-fill" id="forgot-strength-fill"></div>
+      </div>
+      <div class="strength-label-row">
+        <span class="strength-label-text">Strength:</span>
+        <span class="strength-score-text" id="forgot-strength-score">Weak</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="modern-field">
+    <label>Confirm New Password</label>
+    <div class="input-with-icon password-wrap">
+      <span class="field-leading-icon">${icon('lock', 16)}</span>
+      <input id="forgot-confirm-password" class="pill-input icon-padded" type="password" minlength="6" placeholder="Re-enter new password" required>
+      <button type="button" class="show-pass modern-show-pass" aria-label="Show password">${icon('eye', 16)}</button>
+    </div>
+    <div class="password-match-hint" id="forgot-match-hint"></div>
+  </div>
+
+  <button class="primary-pill-btn full-width-btn" type="submit">
+    <span>Reset &amp; Update Password</span>
+    ${icon('check-circle-2', 16)}
+  </button>
+
+  <div class="recovery-fallback-box">
+    <p class="recovery-fallback-text">Forgot your registered phone number or need administrative help?</p>
+    <button type="button" class="secondary-pill-btn full-width-btn" id="forgot-submit-ticket-btn">
+      ${icon('life-buoy', 15)}
+      <span>Submit Recovery Request Ticket</span>
     </button>
-  </p>
-</div>`;
+  </div>
+</form>`;
 
 export const authView = (mode = 'login') => {
   currentPage = mode;

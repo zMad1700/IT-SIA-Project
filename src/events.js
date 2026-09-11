@@ -1,6 +1,6 @@
 // DOM Event Listeners, Form Submissions, and Interactive Bindings
 
-import { ADMIN, ADMIN_PASSWORD_HASH } from './config/constants.js';
+import { ADMIN, ADMIN_PASSWORD_HASH, scholarships } from './config/constants.js';
 import { icon, setTheme, withLoading } from './utils/dom.js';
 import { getTotalScholars, getScholarsByType, accountYearLevel } from './utils/analytics.js';
 import { supabase, cloudReady } from './services/supabase.js';
@@ -16,9 +16,18 @@ import {
   saveAnnouncements,
   getHelpRequests,
   saveHelpRequests,
+  getApplicationsCache,
+  setApplicationsCache,
+  saveApplicationsCache,
+  getScholarshipCatalog,
+  setScholarshipCatalog,
   loadCloudWorkspace,
   addNotification,
   markNotificationsAsRead,
+  markNotificationAsRead,
+  toggleNotificationRead,
+  deleteNotification,
+  clearReadNotifications,
   getUnreadNotificationsCount
 } from './services/storage.js';
 import { formatSchedule } from './utils/formatters.js';
@@ -28,18 +37,35 @@ import {
   updateCurrentUser,
   loadCloudSession,
   profileFields,
-  hashPassword
+  hashPassword,
+  evaluatePasswordStrength
 } from './services/auth.js';
 import { reactionIdentity, adminUpdatesMarkup, studentUpdatesMarkup } from './components/announcements.js';
 import { renderRegisteredActivityChart, renderScholarActivityChart } from './components/charts.js';
-import { needsReviewMarkup, adminDashboard } from './views/admin/dashboard.js';
-import { adminScholarshipsPage } from './views/admin/scholarships.js';
+import { needsReviewMarkup, adminDashboard, setDashboardChartOptions } from './views/admin/dashboard.js';
+import { adminScholarshipsPage, setEditingScholarship } from './views/admin/scholarships.js';
+import { adminApplicationsPage } from './views/admin/applications.js';
+import { registeredAccountsPage } from './views/admin/registered.js';
 import { getAdminDetailAccounts, adminDetail } from './views/admin/scholars.js';
-import { openAddScholarModal, openLogoutModal } from './components/modals.js';
+import {
+  openAddScholarModal,
+  openLogoutModal,
+  openStudentDetailsModal,
+  openApplicationModal,
+  openAcademicUpdateRequestModal,
+  openConfirmModal,
+  openPromptModal,
+  openCommandPalette,
+  openApplicationInspectionModal
+} from './components/modals.js';
+import { showToast } from './components/toast.js';
 import { authView, showAuthMessage, clearAuthMessage } from './views/auth.js';
 import { profilePage } from './views/student/profile.js';
 import { studentDashboard } from './views/student/dashboard.js';
 import { scholarshipsPage } from './views/student/scholarships.js';
+import { helpCenterPage } from './views/student/helpCenter.js';
+import { adminHelpRequestsPage } from './views/admin/helpRequests.js';
+import { notificationsPage } from './views/notifications.js';
 import { navigateTo } from './router.js';
 
 export const refresh = () => {
@@ -58,18 +84,6 @@ export const bind = () => {
 
   const needsReviewCard = document.querySelector('.admin .review-card');
   if (needsReviewCard) needsReviewCard.innerHTML = needsReviewMarkup();
-
-  const studentGrid = document.querySelector('.student-grid');
-  const studentUpdatesAnchor = document.querySelector('.student-renewal-schedule') || studentGrid;
-  if (studentUpdatesAnchor && !document.querySelector('#student-updates')) {
-    studentUpdatesAnchor.insertAdjacentHTML('afterend', studentUpdatesMarkup());
-  }
-
-  if (studentGrid) {
-    const applicationRow = document.querySelector('.application-row');
-    applicationRow?.previousElementSibling?.remove();
-    applicationRow?.remove();
-  }
 
   window.lucide?.createIcons?.();
 
@@ -134,11 +148,209 @@ export const bind = () => {
     }
   });
 
+  document.querySelectorAll('[data-go-notifications]').forEach(btn => {
+    btn.onclick = event => {
+      event.stopPropagation();
+      document.querySelector('#notifications-panel')?.classList.remove('open');
+      navigateTo('notifications');
+    };
+  });
+
+  document.querySelectorAll('[data-notif-item]').forEach(item => {
+    item.onclick = event => {
+      event.stopPropagation();
+      const notifId = item.dataset.notifItem;
+      const user = getCurrentUser();
+      if (user && notifId) {
+        markNotificationAsRead(notifId, user);
+      }
+      document.querySelector('#notifications-panel')?.classList.remove('open');
+      navigateTo('notifications');
+    };
+  });
+
+  // Dedicated Notifications Page Handlers
+  document.querySelectorAll('[data-notifications-page-mark-read]').forEach(btn => {
+    btn.onclick = () => {
+      const user = getCurrentUser();
+      markNotificationsAsRead(user);
+      showToast('All notifications marked as read.', 'success');
+      notificationsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-notifications-page-clear-read]').forEach(btn => {
+    btn.onclick = () => {
+      const user = getCurrentUser();
+      clearReadNotifications(user);
+      showToast('Read notifications cleared.', 'info');
+      notificationsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-notif-read]').forEach(btn => {
+    btn.onclick = () => {
+      const notifId = btn.dataset.toggleNotifRead;
+      const user = getCurrentUser();
+      toggleNotificationRead(notifId, user);
+      notificationsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-delete-notif]').forEach(btn => {
+    btn.onclick = () => {
+      const notifId = btn.dataset.deleteNotif;
+      deleteNotification(notifId);
+      showToast('Notification deleted.', 'info');
+      notificationsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-notif-destination]').forEach(btn => {
+    btn.onclick = () => {
+      const notifId = btn.dataset.notifId;
+      const targetRoute = btn.dataset.notifDestination;
+      const user = getCurrentUser();
+      if (notifId && user) markNotificationAsRead(notifId, user);
+      navigateTo(targetRoute);
+    };
+  });
+
+  const notifPageSearch = document.querySelector('#notif-page-search');
+  const notifPageFilter = document.querySelector('#notif-page-filter');
+
+  const filterPageNotifs = () => {
+    const query = notifPageSearch?.value.trim().toLowerCase() || '';
+    const filter = notifPageFilter?.value || 'all';
+    let visible = 0;
+    document.querySelectorAll('.notif-card-master').forEach(card => {
+      const matchesSearch = !query || card.dataset.search.includes(query);
+      const matchesFilter =
+        filter === 'all'
+          ? true
+          : filter === 'unread'
+            ? card.dataset.notifStatus === 'unread'
+            : card.dataset.notifType === filter;
+      const isVisible = matchesSearch && matchesFilter;
+      card.hidden = !isVisible;
+      if (isVisible) visible++;
+    });
+    const emptyPlaceholder = document.querySelector('#notif-search-empty');
+    if (emptyPlaceholder) {
+      emptyPlaceholder.hidden = visible > 0 || !document.querySelectorAll('.notif-card-master').length;
+    }
+  };
+
+  notifPageSearch?.addEventListener('input', filterPageNotifs);
+  notifPageFilter?.addEventListener('change', filterPageNotifs);
+
+  document.querySelectorAll('[data-reset-notif-filter]').forEach(btn => {
+    btn.onclick = () => {
+      if (notifPageSearch) notifPageSearch.value = '';
+      if (notifPageFilter) notifPageFilter.value = 'all';
+      filterPageNotifs();
+    };
+  });
+
+  if (!window._commandPaletteBound) {
+    window._commandPaletteBound = true;
+    window.addEventListener('keydown', event => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        openCommandPalette();
+      }
+    });
+  }
+
+  document.querySelectorAll('[data-open-command-palette]').forEach(btn => {
+    btn.onclick = event => {
+      event.preventDefault();
+      openCommandPalette();
+    };
+  });
+
+  // CSV Roster and Directory Export
+  document.querySelectorAll('[data-export-scholars]').forEach(btn => {
+    btn.onclick = () => {
+      const scholars = getAccounts().filter(account => account.role === 'user' && ['Old scholar', 'New scholar'].includes(account.scholarType));
+      if (!scholars.length) return showToast('No scholar records available to export.', 'warning');
+
+      const headers = ['Last Name', 'First Name', 'Middle Name', 'School', 'Year Level', 'Course', 'Scholar Type', 'Scholar Status', 'Requirements Status', 'Email', 'Phone', 'Address'];
+      const rows = scholars.map(s => [
+        `"${(s.lastName || s.name?.split(' ').at(-1) || '').replace(/"/g, '""')}"`,
+        `"${(s.firstName || s.name?.split(' ')[0] || '').replace(/"/g, '""')}"`,
+        `"${(s.middleName || '').replace(/"/g, '""')}"`,
+        `"${(s.school || '').replace(/"/g, '""')}"`,
+        `"${(s.yearLevel || s.year || '').replace(/"/g, '""')}"`,
+        `"${(s.course || '').replace(/"/g, '""')}"`,
+        `"${(s.scholarType || '').replace(/"/g, '""')}"`,
+        `"${(s.scholarStatus || 'Active').replace(/"/g, '""')}"`,
+        `"${(s.requirementsStatus || 'Complete').replace(/"/g, '""')}"`,
+        `"${(s.email || '').replace(/"/g, '""')}"`,
+        `"${(s.phone || '').replace(/"/g, '""')}"`,
+        `"${([s.purok, s.barangay, s.city].filter(Boolean).join(', ') || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `ScholarHub-Scholars-Roster-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${scholars.length} scholar records to CSV.`, 'success');
+    };
+  });
+
+  document.querySelectorAll('[data-export-registered]').forEach(btn => {
+    btn.onclick = () => {
+      const accounts = getAccounts().filter(a => a.role === 'user');
+      if (!accounts.length) return showToast('No registered accounts available to export.', 'warning');
+
+      const headers = ['Full Name', 'Email', 'School', 'Year Level', 'Course', 'Scholar Type', 'Status', 'Registered Date', 'Contact Phone', 'Address'];
+      const rows = accounts.map(a => [
+        `"${(a.name || '').replace(/"/g, '""')}"`,
+        `"${(a.email || '').replace(/"/g, '""')}"`,
+        `"${(a.school || '').replace(/"/g, '""')}"`,
+        `"${(a.yearLevel || a.year || '').replace(/"/g, '""')}"`,
+        `"${(a.course || '').replace(/"/g, '""')}"`,
+        `"${(a.scholarType || '').replace(/"/g, '""')}"`,
+        `"${(a.scholarStatus || 'Active').replace(/"/g, '""')}"`,
+        `"${(a.registeredAt ? new Date(a.registeredAt).toLocaleDateString() : '').replace(/"/g, '""')}"`,
+        `"${(a.phone || '').replace(/"/g, '""')}"`,
+        `"${([a.purok, a.barangay, a.city].filter(Boolean).join(', ') || '').replace(/"/g, '""')}"`
+      ]);
+
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `ScholarHub-Registered-Accounts-${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${accounts.length} registered accounts to CSV.`, 'success');
+    };
+  });
+
+  document.querySelectorAll('[data-print-roster], [data-print-registered]').forEach(btn => {
+    btn.onclick = () => {
+      window.print();
+    };
+  });
+
   document.querySelectorAll('[data-page]').forEach(button => {
     button.onclick = () => {
+      if (button.dataset.page === 'notifications') navigateTo('notifications');
       if (button.dataset.page === 'my-profile' && !isAdminSession()) navigateTo('my-profile');
       if (button.dataset.page === 'help-center' && !isAdminSession()) navigateTo('help-center');
       if (button.dataset.page === 'registered-accounts' && isAdminSession()) navigateTo('registered-accounts');
+      if (button.dataset.page === 'applications' && isAdminSession()) navigateTo('applications');
       if (button.dataset.page === 'scholarships') navigateTo('scholarships');
       if (button.dataset.page === 'overview') navigateTo('overview');
     };
@@ -208,6 +420,60 @@ export const bind = () => {
   document.querySelector('#year-filter')?.addEventListener('change', applyRecordFilters);
   document.querySelector('#scholar-search-input')?.addEventListener('input', applyRecordFilters);
 
+  document.querySelector('#roster-select-all')?.addEventListener('change', event => {
+    document.querySelectorAll('.student-record-row').forEach(row => {
+      if (!row.hidden && row.style.display !== 'none') row.querySelector('.roster-select').checked = event.target.checked;
+    });
+  });
+
+  const selectedRosterEmails = () => [...document.querySelectorAll('.roster-select:checked')]
+    .map(input => input.closest('.student-record-row')?.dataset.accountEmail)
+    .filter(Boolean);
+
+  const applyBulkRosterChange = async changes => {
+    const emails = selectedRosterEmails();
+    if (!emails.length) return showToast('Select at least one scholar first.', 'warning');
+    const selectedAccounts = getAccounts().filter(account => emails.includes(account.email));
+    if (cloudReady()) {
+      const results = await Promise.all(selectedAccounts.filter(account => account.id).map(account =>
+        supabase.from('profiles').update(changes).eq('id', account.id)
+      ));
+      const failed = results.find(result => result.error);
+      if (failed?.error) return showToast(`Could not update selected scholars: ${failed.error.message}`, 'error');
+    }
+    saveAccounts(getAccounts().map(account => emails.includes(account.email)
+      ? {
+          ...account,
+          ...(changes.requirements_status ? { requirementsStatus: changes.requirements_status } : {}),
+          ...(changes.scholar_status ? { scholarStatus: changes.scholar_status } : {})
+        }
+      : account));
+    const type = document.querySelector('#roster-bulk-actions')?.dataset.rosterType || 'scholarships';
+    showToast('Roster records updated successfully.', 'success');
+    adminDetail(type);
+  };
+
+  document.querySelectorAll('[data-bulk-requirements]').forEach(button => {
+    button.onclick = () => applyBulkRosterChange({ requirements_status: button.dataset.bulkRequirements });
+  });
+  document.querySelectorAll('[data-bulk-status]').forEach(button => {
+    button.onclick = () => applyBulkRosterChange({ scholar_status: button.dataset.bulkStatus });
+  });
+
+  document.querySelector('[data-export-scholars]')?.addEventListener('click', () => {
+    const headers = ['Name', 'Email', 'School', 'Year Level', 'Course', 'Scholar Type', 'Requirements', 'Status'];
+    const quote = value => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const rows = getAdminDetailAccounts().map(account => [account.name, account.email, account.school, accountYearLevel(account), account.course, account.scholarType, account.requirementsStatus, account.scholarStatus]);
+    const blob = new Blob([[headers, ...rows].map(row => row.map(quote).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'scholarhub-roster.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  });
+  document.querySelector('[data-print-roster]')?.addEventListener('click', () => window.print());
+
   const registeredAccountSearch = document.querySelector('#registered-account-search');
   const registeredSchoolFilter = document.querySelector('#registered-school-filter');
   const registeredYearFilter = document.querySelector('#registered-year-filter');
@@ -232,6 +498,128 @@ export const bind = () => {
   registeredAccountSearch?.addEventListener('input', filterRegisteredAccounts);
   registeredSchoolFilter?.addEventListener('change', filterRegisteredAccounts);
   registeredYearFilter?.addEventListener('change', filterRegisteredAccounts);
+
+  document.querySelectorAll('[data-view-account], [data-view-registered-profile]').forEach(button => {
+    button.onclick = () => {
+      const email = button.dataset.viewRegisteredProfile || button.dataset.viewAccount;
+      const account = getAccounts().find(item => item.email === email);
+      if (account) {
+        openStudentDetailsModal(account);
+      } else {
+        showToast('Account record not found.', 'error');
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-enroll-as-scholar]').forEach(button => {
+    button.onclick = () => {
+      const email = button.dataset.enrollAsScholar;
+      const account = getAccounts().find(item => item.email === email);
+      if (!account) return showToast('Account record not found.', 'error');
+      const studentName = account.name || `${account.firstName || ''} ${account.lastName || ''}`.trim() || email;
+
+      openConfirmModal({
+        title: 'Enroll into Scholar Roster',
+        message: `Enroll ${studentName} into the official active scholar roster?`,
+        details: 'The student will be assigned "Active" scholar status with type "New scholar" and notified.',
+        confirmText: 'Enroll Scholar',
+        type: 'info',
+        onConfirm: async () => {
+          if (cloudReady() && account.id) {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ scholar_status: 'Active', scholar_type: account.scholarType || 'New scholar' })
+              .eq('id', account.id);
+            if (error) return showToast(`Could not enroll scholar: ${error.message}`, 'error');
+          }
+          const updatedAccounts = getAccounts().map(item => {
+            if (item.email === email) {
+              return {
+                ...item,
+                scholarStatus: 'Active',
+                scholarType: item.scholarType || 'New scholar',
+                requirementsStatus: item.requirementsStatus || 'Complete'
+              };
+            }
+            return item;
+          });
+          saveAccounts(updatedAccounts);
+          addNotification({
+            type: 'status',
+            title: 'Scholar Roster Enrollment',
+            message: 'Congratulations! Your account has been officially enrolled into the active scholarship roster.',
+            targetUser: email,
+            priority: 'high'
+          });
+          showToast(`${studentName} enrolled into active scholar roster.`, 'success');
+          registeredAccountsPage();
+        }
+      });
+    };
+  });
+
+  document.querySelectorAll('[data-delete-registered-user]').forEach(button => {
+    button.onclick = () => {
+      const email = button.dataset.deleteRegisteredUser;
+      const account = getAccounts().find(item => item.email === email);
+      if (!account) return showToast('Account record not found.', 'error');
+      const studentName = account.name || `${account.firstName || ''} ${account.lastName || ''}`.trim() || email;
+
+      openConfirmModal({
+        title: 'Delete Registered Account',
+        message: `Permanently remove the account record for ${studentName} (${email})?`,
+        details: 'This action cannot be undone and will remove the student\'s login credentials and data.',
+        confirmText: 'Delete Account',
+        type: 'danger',
+        onConfirm: async () => {
+          if (cloudReady() && account.id) {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ scholar_status: 'Non-active' })
+              .eq('id', account.id);
+            if (error) return showToast(`Could not deactivate cloud account: ${error.message}`, 'error');
+            showToast('Cloud account deactivated to preserve audit integrity.', 'info');
+          }
+          saveAccounts(getAccounts().filter(item => item.email !== email));
+          showToast(`Account for ${studentName} has been deleted.`, 'info');
+          registeredAccountsPage();
+        }
+      });
+    };
+  });
+
+  document.querySelectorAll('[data-reset-account]').forEach(button => {
+    button.onclick = async () => {
+      if (!supabase) return showToast('Password reset emails require a configured Supabase project.', 'warning');
+      button.disabled = true;
+      const { error } = await supabase.auth.resetPasswordForEmail(button.dataset.resetAccount, { redirectTo: window.location.origin });
+      button.disabled = false;
+      showToast(error ? `Could not send reset email: ${error.message}` : 'Password reset email sent.', error ? 'error' : 'success');
+    };
+  });
+
+  document.querySelectorAll('[data-deactivate-account]').forEach(button => {
+    button.onclick = () => {
+      const email = button.dataset.deactivateAccount;
+      openConfirmModal({
+        title: 'Deactivate Scholar Account',
+        message: `Deactivate ${email}?`,
+        details: 'The account will no longer appear as active on the official roster.',
+        confirmText: 'Deactivate Account',
+        type: 'danger',
+        onConfirm: async () => {
+          const account = getAccounts().find(item => item.email === email);
+          if (cloudReady() && account?.id) {
+            const { error } = await supabase.from('profiles').update({ scholar_status: 'Non-active' }).eq('id', account.id);
+            if (error) return showToast(`Could not deactivate account: ${error.message}`, 'error');
+          }
+          saveAccounts(getAccounts().map(item => item.email === email ? { ...item, scholarStatus: 'Non-active' } : item));
+          showToast(`Account ${email} has been deactivated.`, 'info');
+          navigateTo('registered-accounts', true);
+        }
+      });
+    };
+  });
 
   const totalScholarCard = document.querySelector('.total-card');
   if (totalScholarCard) {
@@ -262,29 +650,154 @@ export const bind = () => {
   document.querySelector('#profile-photo')?.addEventListener('change', event => {
     const file = event.target.files[0];
     if (!file) return;
-    if (file.size > 2 * 1024 * 1024) return alert('Please choose an image smaller than 2 MB.');
     const reader = new FileReader();
-    reader.onload = () => {
-      updateCurrentUser({ photo: reader.result });
-      const avatar = document.querySelector('.editable-avatar');
-      const img = document.createElement('img');
-      img.src = reader.result;
-      img.alt = 'Profile preview';
-      avatar.replaceChildren(img);
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_SIZE = 256;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+
+        // Compress to JPEG with 0.85 quality - typical size 15KB - 30KB
+        const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+
+        updateCurrentUser({ photo: compressedDataUrl });
+
+        document.querySelectorAll('.editable-avatar-modern, .editable-avatar, .user-avatar, .profile-avatar-wrapper').forEach(container => {
+          const previewImg = document.createElement('img');
+          previewImg.src = compressedDataUrl;
+          previewImg.alt = 'Profile picture';
+          previewImg.className = 'avatar-img';
+          container.replaceChildren(previewImg);
+        });
+
+        const feedback = document.querySelector('#profile-feedback');
+        if (feedback) {
+          feedback.innerHTML = `<div class="profile-feedback-banner success">${icon('check-circle-2', 16)} <span>Profile photo updated and optimized successfully.</span></div>`;
+        }
+      };
+      img.src = e.target.result;
     };
     reader.readAsDataURL(file);
   });
 
   document.querySelector('#profile-form')?.addEventListener('submit', event => {
     event.preventDefault();
-    const phone = document.querySelector('#profile-phone').value.trim();
+    const name = document.querySelector('#profile-name')?.value.trim();
+    const phone = document.querySelector('#profile-phone')?.value.trim();
+    const sex = document.querySelector('#profile-sex')?.value || null;
+    const birthDate = document.querySelector('#profile-birthdate')?.value || null;
+    const purok = document.querySelector('#profile-purok')?.value.trim() || '';
+    const barangay = document.querySelector('#profile-barangay')?.value.trim() || '';
+    const municipality = document.querySelector('#profile-municipality')?.value.trim() || '';
+    const bio = document.querySelector('#profile-bio')?.value.trim() || '';
+
     updateCurrentUser({
-      name: document.querySelector('#profile-name').value.trim(),
+      name,
       phone,
-      bio: document.querySelector('#profile-bio').value.trim()
+      sex,
+      birthDate,
+      purok,
+      barangay,
+      municipality,
+      bio
     });
-    alert('Your profile has been saved.');
-    profilePage();
+
+    const feedback = document.querySelector('#profile-feedback');
+    if (feedback) {
+      feedback.innerHTML = `<div class="profile-feedback-banner success">
+        ${icon('check-circle-2', 16)}
+        <span>Your profile, contact, and residential details have been saved successfully.</span>
+      </div>`;
+      feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  });
+
+  document.querySelectorAll('[data-request-academic-update]').forEach(button => {
+    button.onclick = () => {
+      const user = getCurrentUser();
+      if (!user) return showToast('Please sign in to request an academic update.', 'warning');
+      openAcademicUpdateRequestModal(user, async ({ newYear, newCourse, remarks, fileName }) => {
+        const now = new Date().toISOString();
+        const subject = `Academic Advancement Request: ${newYear} (${newCourse})`;
+        const message = `Student ${user.name} has requested an academic update to Year Level: ${newYear}, Program: ${newCourse}.\n\nAttached Document: ${fileName || 'None attached'}\n\nStudent Notes: ${remarks}`;
+
+        const initialThread = [
+          {
+            sender: 'student',
+            senderName: user.name || user.email,
+            text: message,
+            createdAt: now
+          }
+        ];
+
+        if (cloudReady()) {
+          const { error } = await supabase.from('help_requests').insert({
+            student_id: user.id,
+            category: 'Document Verification',
+            subject,
+            message,
+            thread: JSON.stringify(initialThread)
+          });
+          if (error) return showToast(`Could not submit request: ${error.message}`, 'error');
+          await loadCloudWorkspace(user);
+        } else {
+          const requests = getHelpRequests();
+          requests.push({
+            id: `help-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            userEmail: user.email,
+            userName: user.name || user.email,
+            category: 'Document Verification',
+            subject,
+            message,
+            createdAt: now,
+            status: 'Pending',
+            adminReply: null,
+            repliedAt: null,
+            thread: initialThread
+          });
+          saveHelpRequests(requests);
+        }
+
+        addNotification({
+          type: 'help',
+          title: 'Academic Update Request Submitted',
+          message: `Your request for ${newYear} (${newCourse}) has been sent to the scholarship office for verification.`,
+          targetEmail: user.email,
+          priority: 'normal'
+        });
+
+        const feedback = document.querySelector('#profile-feedback');
+        if (feedback) {
+          feedback.innerHTML = `<div class="profile-feedback-banner success">
+            ${icon('check-circle-2', 16)}
+            <div>
+              <strong>Academic Advancement Request Submitted!</strong>
+              <p>Your request for ${escapeHtml(newYear)} has been logged with the scholarship administration office. You can track coordinator review in the Help Center.</p>
+            </div>
+          </div>`;
+          feedback.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+        showToast('Academic update request submitted successfully.', 'success');
+      });
+    };
   });
 
   document.querySelector('#password-form')?.addEventListener('submit', async event => {
@@ -293,134 +806,158 @@ export const bind = () => {
     const current = document.querySelector('#current-password')?.value;
     const next = document.querySelector('#new-password').value;
     if (supabase) {
-      if (next !== document.querySelector('#confirm-password').value) return alert('The new passwords do not match.');
+      if (next !== document.querySelector('#confirm-password').value) return showToast('The new passwords do not match.', 'warning');
       const { error } = await supabase.auth.updateUser({ password: next });
-      if (error) return alert(error.message);
+      if (error) return showToast(error.message, 'error');
       event.target.reset();
-      return alert('Your password has been changed.');
+      return showToast('Your password has been changed.', 'success');
     }
     const isLegacySocialAccount = Boolean(user.provider && !user.password);
     if (isLegacySocialAccount) {
-      if (next !== document.querySelector('#confirm-password').value) return alert('The new passwords do not match.');
+      if (next !== document.querySelector('#confirm-password').value) return showToast('The new passwords do not match.', 'warning');
       const hashedNext = await hashPassword(next);
       updateCurrentUser({ password: hashedNext, provider: null });
       event.target.reset();
-      return alert('Your account has been migrated. You can now sign in using your email and password.');
+      return showToast('Your account has been migrated. You can now sign in using your email and password.', 'success');
     }
-    if (user.provider) return alert(`This account uses ${user.provider} sign-in, so its password is managed by ${user.provider}.`);
+    if (user.provider) return showToast(`This account uses ${user.provider} sign-in, so its password is managed by ${user.provider}.`, 'info');
     const storedAccount = getAccounts().find(a => a.email === user.email);
     const currentHash = await hashPassword(current);
     const isLegacy = storedAccount?.password && storedAccount.password.length !== 64;
     const currentMatches = isLegacy ? storedAccount?.password === current : storedAccount?.password === currentHash;
-    if (!currentMatches) return alert('Your current password is not correct.');
-    if (next !== document.querySelector('#confirm-password').value) return alert('The new passwords do not match.');
+    if (!currentMatches) return showToast('Your current password is not correct.', 'warning');
+    if (next !== document.querySelector('#confirm-password').value) return showToast('The new passwords do not match.', 'warning');
     const hashedNext = await hashPassword(next);
     updateCurrentUser({ password: hashedNext });
     event.target.reset();
-    alert('Your password has been changed.');
-  });
-
-  document.querySelector('#help-request-form')?.addEventListener('submit', async event => {
-    event.preventDefault();
-    const btn = event.target.querySelector('button[type="submit"]');
-    const user = getCurrentUser();
-    const subject = document.querySelector('#help-subject').value.trim();
-    const message = document.querySelector('#help-message').value.trim();
-    if (!user?.email || !subject || !message) return;
-    if (cloudReady()) {
-      await withLoading(btn, async () => {
-        const { error } = await supabase.from('help_requests').insert({ student_id: user.id, subject, message });
-        if (error) return alert(`Could not send your request: ${error.message}`);
-        await loadCloudWorkspace(user);
-        alert('Your help request has been sent to the administrator.');
-        navigateTo('overview', true);
-      });
-      return;
-    }
-    const requests = getHelpRequests();
-    requests.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      userEmail: user.email,
-      userName: user.name || user.email,
-      subject,
-      message,
-      createdAt: new Date().toISOString(),
-      status: 'Pending'
-    });
-    saveHelpRequests(requests);
-    alert('Your help request has been sent to the administrator.');
-    navigateTo('overview', true);
+    showToast('Your password has been changed successfully.', 'success');
   });
 
   document.querySelector('#announcement-form')?.addEventListener('submit', async event => {
     event.preventDefault();
     const btn = event.target.querySelector('button[type="submit"]');
     const field = document.querySelector('#announcement-message');
+    const categoryEl = document.querySelector('#announcement-category');
+    const targetSchoolEl = document.querySelector('#announcement-target-school');
+    const pinnedEl = document.querySelector('#announcement-pinned');
     const message = field.value.trim();
     if (!message) return;
+    const category = categoryEl?.value || 'General Advisory';
+    const targetSchool = targetSchoolEl?.value || null;
+    const pinned = Boolean(pinnedEl?.checked);
     const user = getCurrentUser();
+
     if (cloudReady()) {
       await withLoading(btn, async () => {
         const { error } = await supabase.from('announcements').insert({ author_id: user.id, message });
-        if (error) return alert(`Could not post announcement: ${error.message}`);
+        if (error) return showToast(`Could not post announcement: ${error.message}`, 'error');
         addNotification({
           type: 'announcement',
-          title: 'New Campus Advisory',
+          title: pinned ? `[PINNED] ${category}` : category,
           message: message.slice(0, 110) + (message.length > 110 ? '...' : ''),
-          priority: 'normal'
+          targetSchool,
+          priority: pinned ? 'high' : 'normal'
         });
         await loadCloudWorkspace(user);
+        showToast('Campus advisory posted successfully.', 'success');
         adminDashboard();
       });
       return;
     }
     const posts = getAnnouncements();
-    posts.push({
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    posts.unshift({
+      id: `ann-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      category,
+      targetSchool,
       message,
+      pinned,
       createdAt: new Date().toISOString(),
       reactions: { like: [], heart: [] }
     });
     saveAnnouncements(posts);
     addNotification({
       type: 'announcement',
-      title: 'New Campus Advisory',
+      title: pinned ? `[PINNED] ${category}` : category,
       message: message.slice(0, 110) + (message.length > 110 ? '...' : ''),
-      priority: 'normal'
+      targetSchool,
+      priority: pinned ? 'high' : 'normal'
     });
+    showToast('Campus advisory posted successfully.', 'success');
     adminDashboard();
   });
 
   document.querySelectorAll('[data-react]').forEach(button => {
     button.onclick = async () => {
       const user = getCurrentUser();
-      if (!reactionIdentity(user)) return;
+      const identity = reactionIdentity(user);
+      if (!identity) return showToast('Please sign in to react to announcements.', 'warning');
+      const postId = button.dataset.postId;
       const posts = getAnnouncements();
-      const post = posts.find(item => item.id === button.dataset.postId);
+      const post = posts.find(item => String(item.id) === String(postId));
       if (!post) return;
       post.reactions ||= { like: [], heart: [] };
       post.reactions.like ||= [];
       post.reactions.heart ||= [];
       const reaction = button.dataset.react;
-      const identity = reactionIdentity(user);
-      const selected = post.reactions[reaction].includes(identity);
+      const isSelected = post.reactions[reaction].includes(identity);
+
+      // Elements for optimistic DOM mutation
+      const row = button.closest('.announcement-reactions-row');
+      const likeBtn = row?.querySelector('[data-react="like"]');
+      const heartBtn = row?.querySelector('[data-react="heart"]');
+      const likeCount = likeBtn?.querySelector('b');
+      const heartCount = heartBtn?.querySelector('b');
+
+      const prevLikes = [...post.reactions.like];
+      const prevHearts = [...post.reactions.heart];
+
+      if (isSelected) {
+        post.reactions[reaction] = post.reactions[reaction].filter(item => item !== identity);
+      } else {
+        post.reactions.like = post.reactions.like.filter(item => item !== identity);
+        post.reactions.heart = post.reactions.heart.filter(item => item !== identity);
+        post.reactions[reaction].push(identity);
+      }
+
+      // Optimistic in-place DOM update without full page teardown
+      if (likeBtn && likeCount) {
+        const liked = post.reactions.like.includes(identity);
+        likeBtn.classList.toggle('active-reaction', liked);
+        likeCount.textContent = post.reactions.like.length;
+      }
+      if (heartBtn && heartCount) {
+        const hearted = post.reactions.heart.includes(identity);
+        heartBtn.classList.toggle('active-reaction-heart', hearted);
+        heartCount.textContent = post.reactions.heart.length;
+      }
+
       if (cloudReady()) {
-        await withLoading(button, async () => {
-          const request = selected
+        try {
+          const request = isSelected
             ? supabase.from('announcement_reactions').delete().eq('announcement_id', Number(post.id)).eq('user_id', user.id)
             : supabase.from('announcement_reactions').upsert({ announcement_id: Number(post.id), user_id: user.id, reaction }, { onConflict: 'announcement_id,user_id' });
           const { error } = await request;
-          if (error) return alert(`Could not save reaction: ${error.message}`);
+          if (error) {
+            post.reactions.like = prevLikes;
+            post.reactions.heart = prevHearts;
+            if (likeBtn && likeCount) {
+              likeBtn.classList.toggle('active-reaction', prevLikes.includes(identity));
+              likeCount.textContent = prevLikes.length;
+            }
+            if (heartBtn && heartCount) {
+              heartBtn.classList.toggle('active-reaction-heart', prevHearts.includes(identity));
+              heartCount.textContent = prevHearts.length;
+            }
+            return showToast(`Could not save reaction: ${error.message}`, 'error');
+          }
           await loadCloudWorkspace(user);
-          studentDashboard();
-        });
+        } catch {
+          showToast('Could not sync reaction with cloud.', 'error');
+        }
         return;
       }
-      post.reactions.like = post.reactions.like.filter(item => item !== identity);
-      post.reactions.heart = post.reactions.heart.filter(item => item !== identity);
-      if (!selected) post.reactions[reaction].push(identity);
+
       saveAnnouncements(posts);
-      studentDashboard();
     };
   });
 
@@ -437,6 +974,61 @@ export const bind = () => {
     };
   });
 
+  const setupPasswordMeterAndMatch = (passInputSelector, confirmInputSelector, strengthContainerSelector, matchHintSelector) => {
+    const passInput = document.querySelector(passInputSelector);
+    const confirmInput = document.querySelector(confirmInputSelector);
+    const strengthContainer = document.querySelector(strengthContainerSelector);
+    const matchHint = document.querySelector(matchHintSelector);
+
+    if (passInput && strengthContainer) {
+      const fill = strengthContainer.querySelector('.strength-bar-fill');
+      const scoreText = strengthContainer.querySelector('.strength-score-text');
+      passInput.addEventListener('input', () => {
+        const val = passInput.value;
+        if (!val) {
+          strengthContainer.hidden = true;
+          if (matchHint) matchHint.innerHTML = '';
+          return;
+        }
+        strengthContainer.hidden = false;
+        const res = evaluatePasswordStrength(val);
+        if (fill) {
+          fill.style.width = `${res.percent}%`;
+          fill.className = `strength-bar-fill ${res.class}`;
+        }
+        if (scoreText) {
+          scoreText.textContent = res.label;
+          scoreText.className = `strength-score-text ${res.class}`;
+        }
+        checkMatch();
+      });
+    }
+
+    const checkMatch = () => {
+      if (!confirmInput || !matchHint) return;
+      const passVal = passInput?.value || '';
+      const confVal = confirmInput.value;
+      if (!confVal) {
+        matchHint.innerHTML = '';
+        return;
+      }
+      if (passVal === confVal) {
+        matchHint.innerHTML = `<span class="match-success">${icon('check-circle-2', 13)} Passwords match</span>`;
+      } else {
+        matchHint.innerHTML = `<span class="match-error">${icon('alert-circle', 13)} Passwords do not match</span>`;
+      }
+      window.lucide?.createIcons?.();
+    };
+
+    if (confirmInput) {
+      confirmInput.addEventListener('input', checkMatch);
+    }
+  };
+
+  setupPasswordMeterAndMatch('#register-password', '#register-confirm-password', '#register-password-strength', '#register-match-hint');
+  setupPasswordMeterAndMatch('#forgot-password', '#forgot-confirm-password', '#forgot-password-strength', '#forgot-match-hint');
+  setupPasswordMeterAndMatch('#new-password', '#confirm-password', '#profile-password-strength', '#profile-match-hint');
+
   document.querySelectorAll('[data-admin-detail]').forEach(x => {
     x.onclick = () =>
       navigateTo(
@@ -452,6 +1044,376 @@ export const bind = () => {
     button.onclick = () => navigateTo('help-requests');
   });
 
+  document.querySelectorAll('.renewal-document-upload').forEach(input => {
+    input.onchange = event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      if (file.size > 2 * 1024 * 1024) return showToast('Please choose a PDF or image smaller than 2 MB.', 'warning');
+      const reader = new FileReader();
+      reader.onload = () => {
+        let documents = {};
+        try { documents = JSON.parse(localStorage.getItem(input.dataset.documentKey) || '{}'); } catch { documents = {}; }
+        documents[input.dataset.documentId] = { name: file.name, type: file.type, uploadedAt: new Date().toISOString(), data: reader.result };
+        localStorage.setItem(input.dataset.documentKey, JSON.stringify(documents));
+        showToast(`Document "${file.name}" uploaded successfully.`, 'success');
+        studentDashboard();
+      };
+      reader.readAsDataURL(file);
+    };
+  });
+
+  const updateAnnouncement = async (id, changes) => {
+    if (cloudReady()) {
+      const { error } = await supabase.from('announcements').update(changes).eq('id', Number(id));
+      if (error) return showToast(`Could not update announcement: ${error.message}`, 'error');
+      await loadCloudWorkspace(getCurrentUser());
+    } else {
+      const posts = getAnnouncements().map(post => String(post.id) === String(id) ? { ...post, ...changes } : post);
+      saveAnnouncements(posts);
+    }
+    adminDashboard();
+  };
+  document.querySelectorAll('[data-edit-announcement]').forEach(button => {
+    button.onclick = () => {
+      const post = getAnnouncements().find(item => String(item.id) === String(button.dataset.editAnnouncement));
+      openPromptModal({
+        title: 'Edit Campus Announcement',
+        message: 'Update bulletin text content:',
+        defaultValue: post?.message || '',
+        confirmText: 'Save Announcement',
+        onConfirm: async newMessage => {
+          if (newMessage?.trim()) {
+            await updateAnnouncement(button.dataset.editAnnouncement, { message: newMessage.trim() });
+            showToast('Announcement updated successfully.', 'success');
+          }
+        }
+      });
+    };
+  });
+  document.querySelectorAll('[data-pin-announcement]').forEach(button => {
+    button.onclick = () => {
+      const post = getAnnouncements().find(item => String(item.id) === String(button.dataset.pinAnnouncement));
+      if (post) {
+        updateAnnouncement(button.dataset.pinAnnouncement, { pinned: !post.pinned });
+        showToast(post.pinned ? 'Announcement unpinned.' : 'Announcement pinned to top.', 'info');
+      }
+    };
+  });
+  document.querySelectorAll('[data-delete-announcement]').forEach(button => {
+    button.onclick = () => {
+      const id = button.dataset.deleteAnnouncement;
+      openConfirmModal({
+        title: 'Delete Announcement',
+        message: 'Are you sure you want to delete this campus announcement?',
+        details: 'This action will permanently remove the bulletin from the campus feed.',
+        confirmText: 'Delete Announcement',
+        type: 'danger',
+        onConfirm: async () => {
+          if (cloudReady()) {
+            const { error } = await supabase.from('announcements').delete().eq('id', Number(id));
+            if (error) return showToast(`Could not delete announcement: ${error.message}`, 'error');
+            await loadCloudWorkspace(getCurrentUser());
+          } else {
+            saveAnnouncements(getAnnouncements().filter(post => String(post.id) !== String(id)));
+          }
+          showToast('Announcement deleted successfully.', 'info');
+          adminDashboard();
+        }
+      });
+    };
+  });
+
+  const handleApplicationDecision = async (application, action, remarks = '') => {
+    const status = action === 'approve' ? 'Approved' : action === 'reject' ? 'Rejected' : 'Draft';
+    const user = getCurrentUser();
+    const accounts = getAccounts();
+    const applicant = accounts.find(account => (account.id && String(account.id) === String(application.student_id)) || account.email === application.student_id);
+    const applicantEmail = applicant?.email || application.student_id;
+
+    if (cloudReady()) {
+      const updatePayload = {
+        status,
+        reviewed_by: user?.id || null,
+        reviewed_at: new Date().toISOString()
+      };
+      if (remarks) updatePayload.reviewer_notes = remarks;
+      const { error } = await supabase
+        .from('applications')
+        .update(updatePayload)
+        .eq('id', Number(application.id));
+      if (error) {
+        return showToast(`Could not update application: ${error.message}`, 'error');
+      }
+      if (status === 'Approved') {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({ scholar_status: 'Active', scholar_type: 'Old scholar' })
+          .eq('id', application.student_id);
+        if (profileError) showToast(`Application approved, but roster update failed: ${profileError.message}`, 'warning');
+      }
+      if (applicantEmail) {
+        addNotification({
+          type: 'application',
+          title: status === 'Approved' ? 'Scholarship Grant Approved!' : status === 'Rejected' ? 'Application Decision Update' : 'Document Resubmission Requested',
+          message: remarks ? `Status updated to ${status}. Coordinator notes: "${remarks}"` : `Your scholarship application status is now ${status}.`,
+          targetEmail: applicantEmail,
+          priority: status === 'Approved' ? 'high' : 'normal'
+        });
+      }
+      await loadCloudWorkspace(user);
+      showToast(`Application marked as ${status}.`, 'success');
+      return adminApplicationsPage();
+    }
+
+    setApplicationsCache(getApplicationsCache().map(item => String(item.id) === String(application.id)
+      ? { ...item, status, reviewer_notes: remarks || item.reviewer_notes, reviewed_by: user?.id || null, reviewed_at: new Date().toISOString() }
+      : item));
+    if (status === 'Approved') {
+      saveAccounts(getAccounts().map(account => (account.id && String(account.id) === String(application.student_id)) || account.email === application.student_id
+        ? { ...account, scholarStatus: 'Active', scholarType: 'Old scholar' }
+        : account));
+    }
+    if (applicantEmail) {
+      addNotification({
+        type: 'application',
+        title: status === 'Approved' ? 'Scholarship Grant Approved!' : status === 'Rejected' ? 'Application Decision Update' : 'Document Resubmission Requested',
+        message: remarks ? `Status updated to ${status}. Coordinator notes: "${remarks}"` : `Your scholarship application status is now ${status}.`,
+        targetEmail: applicantEmail,
+        priority: status === 'Approved' ? 'high' : 'normal'
+      });
+    }
+    showToast(`Application marked as ${status}.`, 'success');
+    adminApplicationsPage();
+  };
+
+  const filterApplications = () => {
+    const activePill = document.querySelector('[data-application-filter].active');
+    const statusFilter = activePill?.dataset.applicationFilter || 'All';
+    const query = (document.querySelector('#application-search')?.value || '').trim().toLowerCase();
+    let visible = 0;
+
+    document.querySelectorAll('.application-review-row').forEach(row => {
+      const rowStatus = row.dataset.status;
+      const rowSearch = (row.dataset.search || '').toLowerCase();
+      const matchesStatus = statusFilter === 'All' || rowStatus === statusFilter;
+      const matchesQuery = !query || rowSearch.includes(query);
+      const show = matchesStatus && matchesQuery;
+      row.style.display = show ? '' : 'none';
+      if (show) visible++;
+    });
+
+    const empty = document.querySelector('#application-filter-empty');
+    if (empty) empty.hidden = visible > 0;
+  };
+
+  const appSearch = document.querySelector('#application-search');
+  if (appSearch) {
+    appSearch.oninput = filterApplications;
+  }
+
+  document.querySelectorAll('[data-application-filter]').forEach(button => {
+    button.onclick = () => {
+      document.querySelectorAll('[data-application-filter]').forEach(item => item.classList.toggle('active', item === button));
+      filterApplications();
+    };
+  });
+
+  document.querySelectorAll('[data-reset-app-filter]').forEach(button => {
+    button.onclick = () => {
+      const search = document.querySelector('#application-search');
+      if (search) search.value = '';
+      const allPill = document.querySelector('[data-application-filter="All"]');
+      if (allPill) {
+        document.querySelectorAll('[data-application-filter]').forEach(item => item.classList.toggle('active', item === allPill));
+      }
+      filterApplications();
+    };
+  });
+
+  // Inspection modal
+  document.querySelectorAll('[data-inspect-application]').forEach(button => {
+    button.onclick = () => {
+      const appId = button.dataset.inspectApplication;
+      const applications = getApplicationsCache();
+      const application = applications.find(item => String(item.id) === String(appId));
+      if (!application) return showToast('Application record not found.', 'error');
+      const accounts = getAccounts();
+      const applicant = accounts.find(account => (account.id && String(account.id) === String(application.student_id)) || account.email === application.student_id);
+      const programs = getScholarshipCatalog();
+      const program = programs.find(p => String(p.id) === String(application.scholarship_id));
+      openApplicationInspectionModal(application, applicant, program, async (action, remarks) => {
+        await handleApplicationDecision(application, action, remarks);
+      });
+    };
+  });
+
+  // Direct row decision actions
+  document.querySelectorAll('[data-application-action]').forEach(button => {
+    button.onclick = async () => {
+      const application = getApplicationsCache().find(item => String(item.id) === String(button.dataset.applicationId));
+      if (!application) return;
+      const action = button.dataset.applicationAction;
+      const accounts = getAccounts();
+      const applicant = accounts.find(account => (account.id && String(account.id) === String(application.student_id)) || account.email === application.student_id);
+      const studentName = applicant ? `${applicant.firstName || ''} ${applicant.lastName || ''}`.trim() || applicant.name : 'this applicant';
+
+      if (action === 'reject') {
+        openPromptModal({
+          title: 'Reject Application',
+          message: `Please specify the feedback or grounds for rejecting ${studentName}'s application (visible to student):`,
+          placeholder: 'e.g. GWA does not meet the minimum 1.75 threshold required for this grant.',
+          confirmText: 'Reject with Remarks',
+          onConfirm: async remarks => {
+            await handleApplicationDecision(application, 'reject', remarks);
+          }
+        });
+        return;
+      }
+
+      if (action === 'resubmit') {
+        openPromptModal({
+          title: 'Request Resubmission',
+          message: `Specify which documentary requirement or information needs resubmission from ${studentName}:`,
+          placeholder: 'e.g. Please upload an official signed copy of your Certificate of Grades with campus registrar seal.',
+          confirmText: 'Send Resubmission Request',
+          onConfirm: async remarks => {
+            await handleApplicationDecision(application, 'resubmit', remarks);
+          }
+        });
+        return;
+      }
+
+      openConfirmModal({
+        title: 'Approve Scholarship Grant',
+        message: `Are you sure you want to approve ${studentName} for this scholarship grant?`,
+        details: 'The student will be marked as an active scholar in the roster and notified in their portal.',
+        confirmText: 'Approve Grant',
+        type: 'primary',
+        iconName: 'check-circle',
+        onConfirm: async () => {
+          await handleApplicationDecision(application, 'approve', 'Congratulations! Your scholarship application has been officially approved.');
+        }
+      });
+    };
+  });
+
+  // Batch operations on applications
+  const updateBatchBar = () => {
+    const checked = document.querySelectorAll('.application-select-row:checked');
+    const bar = document.querySelector('#application-batch-bar');
+    const countSpan = document.querySelector('#application-selected-count');
+    if (countSpan) countSpan.textContent = checked.length;
+    if (bar) bar.hidden = checked.length === 0;
+  };
+
+  const selectAllApps = document.querySelector('#select-all-applications');
+  if (selectAllApps) {
+    selectAllApps.onchange = () => {
+      const visibleRows = Array.from(document.querySelectorAll('.application-review-row')).filter(r => r.style.display !== 'none');
+      visibleRows.forEach(row => {
+        const checkbox = row.querySelector('.application-select-row');
+        if (checkbox) checkbox.checked = selectAllApps.checked;
+      });
+      updateBatchBar();
+    };
+  }
+
+  document.querySelectorAll('.application-select-row').forEach(cb => {
+    cb.onchange = updateBatchBar;
+  });
+
+  document.querySelectorAll('[data-batch-clear]').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.application-select-row').forEach(cb => { cb.checked = false; });
+      if (selectAllApps) selectAllApps.checked = false;
+      updateBatchBar();
+    };
+  });
+
+  document.querySelectorAll('[data-batch-action]').forEach(btn => {
+    btn.onclick = () => {
+      const action = btn.dataset.batchAction;
+      const checkedBoxes = Array.from(document.querySelectorAll('.application-select-row:checked'));
+      if (!checkedBoxes.length) return showToast('No applications selected.', 'info');
+      const count = checkedBoxes.length;
+
+      openConfirmModal({
+        title: action === 'approve' ? 'Batch Approve Applications' : 'Batch Reject Applications',
+        message: `Are you sure you want to ${action} ${count} selected application${count === 1 ? '' : 's'}?`,
+        details: action === 'approve' ? 'All selected students will be admitted into the active scholar roster.' : 'All selected applications will be marked as rejected.',
+        confirmText: action === 'approve' ? `Approve ${count} Applications` : `Reject ${count} Applications`,
+        type: action === 'approve' ? 'primary' : 'danger',
+        iconName: action === 'approve' ? 'check-circle' : 'x-circle',
+        onConfirm: async () => {
+          for (const cb of checkedBoxes) {
+            const appId = cb.dataset.selectAppId;
+            const app = getApplicationsCache().find(item => String(item.id) === String(appId));
+            if (app) {
+              await handleApplicationDecision(app, action, action === 'approve' ? 'Bulk approved by scholarship committee.' : 'Bulk reviewed and rejected.');
+            }
+          }
+          showToast(`Successfully ${action === 'approve' ? 'approved' : 'rejected'} ${count} applications.`, 'success');
+          adminApplicationsPage();
+        }
+      });
+    };
+  });
+
+  // Empty-state CTA triggers
+  document.querySelectorAll('[data-focus-new-program]').forEach(btn => {
+    btn.onclick = () => {
+      const titleInput = document.querySelector('#scholarship-title');
+      if (titleInput) {
+        titleInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        titleInput.focus();
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-reset-program-filter]').forEach(btn => {
+    btn.onclick = () => {
+      const search = document.querySelector('#program-search');
+      if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+      const category = document.querySelector('#program-category-filter');
+      if (category) { category.value = 'all'; category.dispatchEvent(new Event('change')); }
+    };
+  });
+
+  document.querySelectorAll('[data-reset-student-scholarships]').forEach(btn => {
+    btn.onclick = () => {
+      const search = document.querySelector('#scholarship-search-input');
+      if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+      const allPill = document.querySelector('[data-category-filter="all"]');
+      if (allPill) allPill.click();
+    };
+  });
+
+  document.querySelectorAll('[data-focus-ticket-form]').forEach(btn => {
+    btn.onclick = () => {
+      const subInput = document.querySelector('#help-subject');
+      if (subInput) {
+        subInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        subInput.focus();
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-reset-help-filter]').forEach(btn => {
+    btn.onclick = () => {
+      const search = document.querySelector('#help-filter-search');
+      if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+      const statusPill = document.querySelector('[data-help-filter="all"]');
+      if (statusPill) statusPill.click();
+    };
+  });
+
+  document.querySelectorAll('[data-reset-registered-search]').forEach(btn => {
+    btn.onclick = () => {
+      const search = document.querySelector('#registered-search');
+      if (search) { search.value = ''; search.dispatchEvent(new Event('input')); }
+    };
+  });
+
   document.querySelectorAll('[data-back-dashboard]').forEach(x => {
     x.onclick = () => navigateTo('overview');
   });
@@ -461,56 +1423,347 @@ export const bind = () => {
   });
 
   document.querySelectorAll('[data-apply-scholarship]').forEach(button => {
-    button.onclick = async () => {
+    button.onclick = () => {
       const user = getCurrentUser();
-      if (!cloudReady()) {
-        return alert('Applications require Supabase configuration. Add your Supabase values to .env first.');
-      }
-      const scholarshipId = Number(button.dataset.applyScholarship);
-      button.disabled = true;
-      const { data: application, error } = await supabase
-        .from('applications')
-        .insert({ student_id: user.id, scholarship_id: scholarshipId, status: 'Submitted', submitted_at: new Date().toISOString() })
-        .select()
-        .single();
-      if (error) {
-        button.disabled = false;
-        return alert(`Could not submit application: ${error.message}`);
-      }
-      const { data: requirements, error: requirementsError } = await supabase
-        .from('requirements')
-        .select('id')
-        .eq('scholarship_id', scholarshipId);
-      if (!requirementsError && requirements?.length) {
-        await supabase
-          .from('application_requirements')
-          .insert(requirements.map(requirement => ({ application_id: application.id, requirement_id: requirement.id })));
-      }
-      await loadCloudWorkspace(user);
-      alert('Your scholarship application has been submitted.');
-      scholarshipsPage();
+      if (!user) return showToast('Please sign in as a student to apply for scholarships.', 'warning');
+      const programId = button.dataset.applyScholarship;
+      const catalog = getScholarshipCatalog();
+      const programs = catalog.length
+        ? catalog
+        : scholarships.map((item, index) => ({
+            id: `demo-${index}`,
+            title: item[0],
+            category: item[1],
+            deadline: item[2],
+            amount: Number(String(item[3]).replace(/[^0-9.]/g, '')),
+            status: 'Open'
+          }));
+      const program = programs.find(item => String(item.id) === String(programId));
+      if (!program) return;
+
+      openApplicationModal(program, user, async ({ gwa, income, statement, fileName, fileData }) => {
+        if (cloudReady()) {
+          const scholarshipId = Number(program.id);
+          const { data: application, error } = await supabase
+            .from('applications')
+            .insert({
+              student_id: user.id,
+              scholarship_id: scholarshipId,
+              status: 'Submitted',
+              submitted_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+          if (error) return showToast(`Could not submit application: ${error.message}`, 'error');
+          const { data: requirements, error: requirementsError } = await supabase
+            .from('requirements')
+            .select('id')
+            .eq('scholarship_id', scholarshipId);
+          if (!requirementsError && requirements?.length) {
+            await supabase
+              .from('application_requirements')
+              .insert(requirements.map(requirement => ({ application_id: application.id, requirement_id: requirement.id })));
+          }
+          addNotification({
+            type: 'application',
+            title: 'Scholarship Application Submitted',
+            message: `Your application for "${program.title}" has been received and is under administrative review.`,
+            targetEmail: user.email,
+            priority: 'normal'
+          });
+          await loadCloudWorkspace(user);
+          showToast('Your scholarship application has been successfully submitted!', 'success');
+          return scholarshipsPage();
+        }
+
+        // Offline / Local Demo Mode Persistence
+        const cache = getApplicationsCache();
+        const newApplication = {
+          id: `app-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+          student_id: user.id || user.email || 'student@scholarhub.local',
+          scholarship_id: program.id,
+          status: 'Submitted',
+          gwa: gwa || '1.25',
+          household_income: income || 'Below ₱150,000',
+          statement: statement || 'Dedicated scholar striving for academic excellence.',
+          file_name: fileName || null,
+          file_data: fileData || null,
+          submitted_at: new Date().toISOString(),
+          reviewer_notes: null
+        };
+        const updated = [newApplication, ...cache.filter(a => !(String(a.scholarship_id) === String(program.id) && (a.student_id === user.id || a.student_id === user.email)))];
+        saveApplicationsCache(updated);
+        addNotification({
+          type: 'application',
+          title: 'Scholarship Application Submitted',
+          message: `Your application for "${program.title}" has been received and is under administrative review.`,
+          targetEmail: user.email,
+          priority: 'normal'
+        });
+        showToast('Your scholarship application has been successfully submitted!', 'success');
+        scholarshipsPage();
+      });
     };
+  });
+
+  const filterScholarships = () => {
+    const searchInput = document.querySelector('#scholarship-search-input');
+    const query = (searchInput?.value || '').trim().toLowerCase();
+    const activeCategoryBtn = document.querySelector('.category-filter-pill.active');
+    const activeCategory = (activeCategoryBtn?.dataset.categoryFilter || 'all').toLowerCase();
+    const cards = document.querySelectorAll('.scholarship-grant-card');
+    let visibleCount = 0;
+
+    cards.forEach(card => {
+      const cardCategory = (card.dataset.category || '').toLowerCase();
+      const cardSearch = (card.dataset.search || '').toLowerCase();
+      const matchesCategory = activeCategory === 'all' || cardCategory === activeCategory;
+      const matchesQuery = !query || cardSearch.includes(query);
+      const isVisible = matchesCategory && matchesQuery;
+      card.style.display = isVisible ? '' : 'none';
+      if (isVisible) visibleCount++;
+    });
+
+    const emptyBanner = document.querySelector('#scholarship-filter-empty');
+    if (emptyBanner) emptyBanner.hidden = visibleCount > 0;
+  };
+
+  document.querySelector('#scholarship-search-input')?.addEventListener('input', filterScholarships);
+
+  document.querySelectorAll('[data-category-filter]').forEach(button => {
+    button.onclick = () => {
+      document.querySelectorAll('[data-category-filter]').forEach(btn => btn.classList.toggle('active', btn === button));
+      filterScholarships();
+    };
+  });
+
+  document.querySelector('#help-request-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const btn = event.target.querySelector('button[type="submit"]');
+    const user = getCurrentUser();
+    const category = document.querySelector('#help-category')?.value || 'General Concern';
+    const subject = document.querySelector('#help-subject')?.value.trim();
+    const message = document.querySelector('#help-message')?.value.trim();
+    if (!user?.email || !subject || !message) return;
+    const now = new Date().toISOString();
+    const initialThread = [
+      {
+        sender: 'student',
+        senderName: user.name || user.email,
+        text: message,
+        createdAt: now
+      }
+    ];
+
+    if (cloudReady()) {
+      await withLoading(btn, async () => {
+        const { error } = await supabase.from('help_requests').insert({
+          student_id: user.id,
+          subject,
+          message,
+          category,
+          thread: JSON.stringify(initialThread)
+        });
+        if (error) return showToast(`Could not send your request: ${error.message}`, 'error');
+        await loadCloudWorkspace(user);
+        helpCenterPage();
+        showToast('Inquiry ticket submitted successfully.', 'success');
+        const feedback = document.querySelector('#help-form-feedback');
+        if (feedback) {
+          feedback.innerHTML = `<div class="help-submission-success-banner">${icon('check-circle-2', 18)} <div><strong>Inquiry Ticket Submitted Successfully</strong><p>Your ticket has been routed to the scholarship office. You can track responses below.</p></div></div>`;
+        }
+      });
+      return;
+    }
+
+    const requests = getHelpRequests();
+    requests.push({
+      id: `help-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      userEmail: user.email,
+      userName: user.name || user.email,
+      category,
+      subject,
+      message,
+      createdAt: now,
+      status: 'Pending',
+      adminReply: null,
+      repliedAt: null,
+      thread: initialThread
+    });
+    saveHelpRequests(requests);
+    helpCenterPage();
+    showToast('Inquiry ticket submitted successfully.', 'success');
+    const feedback = document.querySelector('#help-form-feedback');
+    if (feedback) {
+      feedback.innerHTML = `<div class="help-submission-success-banner">${icon('check-circle-2', 18)} <div><strong>Inquiry Ticket Submitted Successfully</strong><p>Your ticket has been routed to the scholarship office. You can track responses below.</p></div></div>`;
+    }
+  });
+
+  document.querySelectorAll('.student-followup-form').forEach(form => {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const ticketId = form.dataset.ticketId;
+      const input = form.querySelector('.student-followup-input');
+      const text = input?.value.trim();
+      if (!text) return;
+      const user = getCurrentUser();
+      if (!user) return;
+      const now = new Date().toISOString();
+      const requests = getHelpRequests();
+      const ticket = requests.find(item => String(item.id) === String(ticketId));
+      if (!ticket) return;
+
+      ticket.thread = Array.isArray(ticket.thread) && ticket.thread.length
+        ? ticket.thread
+        : [
+            ...(ticket.message ? [{ sender: 'student', senderName: ticket.userName || 'You', text: ticket.message, createdAt: ticket.createdAt }] : []),
+            ...(ticket.adminReply ? [{ sender: 'admin', senderName: 'Administration', text: ticket.adminReply, createdAt: ticket.repliedAt || ticket.createdAt }] : [])
+          ];
+
+      ticket.thread.push({
+        sender: 'student',
+        senderName: user.name || user.email,
+        text,
+        createdAt: now
+      });
+      ticket.status = 'Pending';
+
+      const btn = form.querySelector('button[type="submit"]');
+      if (cloudReady()) {
+        await withLoading(btn, async () => {
+          const { error } = await supabase
+            .from('help_requests')
+            .update({ status: 'Pending', thread: JSON.stringify(ticket.thread) })
+            .eq('id', Number(ticketId));
+          if (error) return showToast(`Could not send reply: ${error.message}`, 'error');
+          await loadCloudWorkspace(user);
+        });
+      } else {
+        saveHelpRequests(requests);
+      }
+      showToast('Follow-up message sent successfully.', 'success');
+      helpCenterPage();
+    });
   });
 
   document.querySelector('#scholarship-form')?.addEventListener('submit', async event => {
     event.preventDefault();
     const btn = event.target.querySelector('button[type="submit"]');
     const user = getCurrentUser();
-    if (!cloudReady()) return alert('Scholarship management requires Supabase configuration.');
+    const editingId = event.target.dataset.editProgramId;
+    const payload = {
+      title: document.querySelector('#scholarship-title').value.trim(),
+      category: document.querySelector('#scholarship-category').value.trim() || null,
+      description: document.querySelector('#scholarship-description').value.trim() || null,
+      amount: Number(document.querySelector('#scholarship-amount').value) || null,
+      deadline: document.querySelector('#scholarship-deadline').value || null
+    };
     await withLoading(btn, async () => {
-      const { error } = await supabase.from('scholarships').insert({
-        title: document.querySelector('#scholarship-title').value.trim(),
-        category: document.querySelector('#scholarship-category').value.trim() || null,
-        description: document.querySelector('#scholarship-description').value.trim() || null,
-        amount: Number(document.querySelector('#scholarship-amount').value) || null,
-        deadline: document.querySelector('#scholarship-deadline').value || null,
-        created_by: user.id,
-        status: 'Open'
-      });
-      if (error) return alert(`Could not create scholarship: ${error.message}`);
-      await loadCloudWorkspace(user);
+      if (cloudReady()) {
+        const request = editingId
+          ? supabase.from('scholarships').update(payload).eq('id', Number(editingId))
+          : supabase.from('scholarships').insert({ ...payload, created_by: user.id, status: 'Open' });
+        const { error } = await request;
+        if (error) return showToast(`Could not ${editingId ? 'update' : 'create'} scholarship: ${error.message}`, 'error');
+        setEditingScholarship(null);
+        await loadCloudWorkspace(user);
+        showToast(`Scholarship program ${editingId ? 'updated' : 'created'} successfully.`, 'success');
+        return adminScholarshipsPage();
+      }
+      const catalog = getScholarshipCatalog();
+      setScholarshipCatalog(editingId
+        ? catalog.map(item => String(item.id) === String(editingId) ? { ...item, ...payload } : item)
+        : [...catalog, { ...payload, id: `local-${Date.now()}`, status: 'Open', created_at: new Date().toISOString() }]);
+      setEditingScholarship(null);
+      showToast(`Scholarship program ${editingId ? 'updated' : 'created'} successfully.`, 'success');
       adminScholarshipsPage();
     });
+  });
+
+  document.querySelector('#dashboard-term-filter')?.addEventListener('change', event => {
+    setDashboardChartOptions({ term: event.target.value });
+    adminDashboard();
+  });
+  document.querySelector('#application-chart-range')?.addEventListener('change', event => {
+    setDashboardChartOptions({ range: event.target.value });
+    adminDashboard();
+  });
+  document.querySelector('[data-toggle-distribution-details]')?.addEventListener('click', () => {
+    const details = document.querySelector('#distribution-details');
+    if (details) details.hidden = !details.hidden;
+  });
+
+  document.querySelector('[data-cancel-scholarship-edit]')?.addEventListener('click', () => {
+    setEditingScholarship(null);
+    adminScholarshipsPage();
+  });
+
+  const filterPrograms = () => {
+    const query = document.querySelector('#program-search')?.value.trim().toLowerCase() || '';
+    const category = document.querySelector('#program-category-filter')?.value || 'all';
+    let visible = 0;
+    document.querySelectorAll('.catalog-table-row').forEach(row => {
+      const matches = (!query || row.dataset.search.includes(query)) && (category === 'all' || row.dataset.category === category);
+      row.hidden = !matches;
+      if (matches) visible++;
+    });
+    const empty = document.querySelector('#program-filter-empty');
+    if (empty) empty.hidden = visible > 0 || !document.querySelectorAll('.catalog-table-row').length;
+  };
+  document.querySelector('#program-search')?.addEventListener('input', filterPrograms);
+  document.querySelector('#program-category-filter')?.addEventListener('change', filterPrograms);
+
+  document.querySelectorAll('[data-edit-program]').forEach(button => {
+    button.onclick = () => {
+      setEditingScholarship(button.dataset.editProgram);
+      adminScholarshipsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-toggle-program]').forEach(button => {
+    button.onclick = async () => {
+      const id = button.dataset.toggleProgram;
+      const program = getScholarshipCatalog().find(item => String(item.id) === String(id));
+      if (!program) return;
+      const status = program.status === 'Open' ? 'Closed' : 'Open';
+      button.disabled = true;
+      if (cloudReady()) {
+        const { error } = await supabase.from('scholarships').update({ status }).eq('id', Number(id));
+        if (error) { button.disabled = false; return showToast(`Could not update program status: ${error.message}`, 'error'); }
+        await loadCloudWorkspace(getCurrentUser());
+      } else {
+        setScholarshipCatalog(getScholarshipCatalog().map(item => String(item.id) === String(id) ? { ...item, status } : item));
+      }
+      showToast(`Program status changed to ${status}.`, 'info');
+      adminScholarshipsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-delete-program]').forEach(button => {
+    button.onclick = () => {
+      const id = button.dataset.deleteProgram;
+      const program = getScholarshipCatalog().find(item => String(item.id) === String(id));
+      if (!program) return;
+      openConfirmModal({
+        title: 'Delete Scholarship Program',
+        message: `Delete "${program.title}"?`,
+        details: 'This program will be permanently removed from the catalog. This cannot be undone.',
+        confirmText: 'Delete Program',
+        type: 'danger',
+        onConfirm: async () => {
+          button.disabled = true;
+          if (cloudReady()) {
+            const { error } = await supabase.from('scholarships').delete().eq('id', Number(id));
+            if (error) { button.disabled = false; return showToast(`Could not delete program: ${error.message}`, 'error'); }
+            await loadCloudWorkspace(getCurrentUser());
+          } else {
+            setScholarshipCatalog(getScholarshipCatalog().filter(item => String(item.id) !== String(id)));
+          }
+          showToast(`Program "${program.title}" deleted successfully.`, 'info');
+          adminScholarshipsPage();
+        }
+      });
+    };
   });
 
   document.querySelector('#renewal-deadline-form')?.addEventListener('submit', async event => {
@@ -531,7 +1784,7 @@ export const bind = () => {
           },
           { onConflict: 'school_name' }
         );
-        if (error) return alert(`Could not save reminder: ${error.message}`);
+        if (error) return showToast(`Could not save reminder: ${error.message}`, 'error');
         addNotification({
           type: 'deadline',
           title: `Renewal Deadline Announced: ${school}`,
@@ -540,6 +1793,7 @@ export const bind = () => {
           priority: 'high'
         });
         await loadCloudWorkspace(user);
+        showToast(`Renewal reminder saved for ${school}.`, 'success');
         adminDashboard();
       });
       return;
@@ -552,7 +1806,7 @@ export const bind = () => {
       targetSchool: school,
       priority: 'high'
     });
-    alert(`Renewal reminder saved for ${school}. Only students from this school will see it.`);
+    showToast(`Renewal reminder saved for ${school}.`, 'success');
     adminDashboard();
   });
 
@@ -574,7 +1828,7 @@ export const bind = () => {
           },
           { onConflict: 'school_name' }
         );
-        if (error) return alert(`Could not save schedule: ${error.message}`);
+        if (error) return showToast(`Could not save schedule: ${error.message}`, 'error');
         addNotification({
           type: 'schedule',
           title: `Renewal Appointment Scheduled: ${school}`,
@@ -583,6 +1837,7 @@ export const bind = () => {
           priority: 'high'
         });
         await loadCloudWorkspace(user);
+        showToast(`Renewal schedule saved for ${school}.`, 'success');
         adminDashboard();
       });
       return;
@@ -595,32 +1850,111 @@ export const bind = () => {
       targetSchool: school,
       priority: 'high'
     });
-    alert(`Renewal schedule saved for ${school}. Students from this school will see it on their dashboard.`);
+    showToast(`Renewal schedule saved for ${school}.`, 'success');
     adminDashboard();
+  });
+
+  const toLocalDateTimeValue = value => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    const offset = date.getTimezoneOffset() * 60_000;
+    return new Date(date.getTime() - offset).toISOString().slice(0, 16);
+  };
+
+  const prefillRenewalForm = (kind, school, value) => {
+    const schoolField = document.querySelector(kind === 'deadline' ? '#renewal-school' : '#renewal-schedule-school');
+    const dateField = document.querySelector(kind === 'deadline' ? '#renewal-deadline' : '#renewal-schedule-date');
+    if (!schoolField || !dateField) return;
+    schoolField.value = school;
+    dateField.value = toLocalDateTimeValue(value);
+    dateField.closest('.modern-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    dateField.focus();
+  };
+
+  document.querySelectorAll('.edit-renewal-deadline').forEach(button => {
+    button.onclick = () => prefillRenewalForm('deadline', button.dataset.school, getRenewalDeadlines()[button.dataset.school]);
+  });
+
+  document.querySelectorAll('.edit-renewal-schedule').forEach(button => {
+    button.onclick = () => prefillRenewalForm('schedule', button.dataset.school, getRenewalSchedules()[button.dataset.school]);
+  });
+
+  document.querySelectorAll('.clear-renewal-deadline').forEach(button => {
+    button.onclick = () => {
+      const school = button.dataset.school;
+      openConfirmModal({
+        title: 'Clear Renewal Deadline',
+        message: `Clear the renewal deadline for ${school}?`,
+        confirmText: 'Clear Deadline',
+        type: 'warning',
+        onConfirm: async () => {
+          const user = getCurrentUser();
+          if (cloudReady()) {
+            const request = getRenewalSchedules()[school]
+              ? supabase.from('renewal_schedules').update({ deadline_at: null }).eq('school_name', school)
+              : supabase.from('renewal_schedules').delete().eq('school_name', school);
+            const { error } = await request;
+            if (error) return showToast(`Could not clear deadline: ${error.message}`, 'error');
+            await loadCloudWorkspace(user);
+          } else {
+            const deadlines = getRenewalDeadlines();
+            delete deadlines[school];
+            saveRenewalDeadlines(deadlines);
+          }
+          showToast(`Renewal deadline cleared for ${school}.`, 'info');
+          adminDashboard();
+        }
+      });
+    };
   });
 
   document.querySelectorAll('.clear-renewal-schedule').forEach(button => {
     button.onclick = () => {
       const school = button.dataset.school;
-      if (!confirm(`Clear the renewal schedule for ${school}?`)) return;
-      const user = getCurrentUser();
-      if (cloudReady()) {
-        const request = getRenewalDeadlines()[school]
-          ? supabase.from('renewal_schedules').update({ schedule_at: null }).eq('school_name', school)
-          : supabase.from('renewal_schedules').delete().eq('school_name', school);
-        request.then(async ({ error }) => {
-          if (error) return alert(`Could not clear schedule: ${error.message}`);
-          await loadCloudWorkspace(user);
+      openConfirmModal({
+        title: 'Clear Renewal Schedule',
+        message: `Clear the renewal schedule for ${school}?`,
+        confirmText: 'Clear Schedule',
+        type: 'warning',
+        onConfirm: async () => {
+          const user = getCurrentUser();
+          if (cloudReady()) {
+            const request = getRenewalDeadlines()[school]
+              ? supabase.from('renewal_schedules').update({ schedule_at: null }).eq('school_name', school)
+              : supabase.from('renewal_schedules').delete().eq('school_name', school);
+            const { error } = await request;
+            if (error) return showToast(`Could not clear schedule: ${error.message}`, 'error');
+            await loadCloudWorkspace(user);
+          } else {
+            const schedules = getRenewalSchedules();
+            delete schedules[school];
+            saveRenewalSchedules(schedules);
+          }
+          showToast(`Renewal schedule cleared for ${school}.`, 'info');
           adminDashboard();
-        });
-        return;
-      }
-      const schedules = getRenewalSchedules();
-      delete schedules[school];
-      saveRenewalSchedules(schedules);
-      alert(`Renewal schedule cleared for ${school}.`);
-      adminDashboard();
+        }
+      });
     };
+  });
+
+  const scheduleFilter = document.querySelector('#renewal-schedule-filter');
+  scheduleFilter?.addEventListener('change', () => {
+    const now = new Date();
+    document.querySelectorAll('.schedule-table-row').forEach(row => {
+      const value = row.dataset.scheduleDate;
+      const date = value ? new Date(value) : null;
+      const isUpcoming = date && !Number.isNaN(date.getTime()) && date >= now;
+      const isPast = date && !Number.isNaN(date.getTime()) && date < now;
+      row.hidden = scheduleFilter.value === 'upcoming' ? !isUpcoming : scheduleFilter.value === 'past' ? !isPast : false;
+    });
+  });
+
+  const renewalCycleFilter = document.querySelector('#renewal-schedule-cycle-filter');
+  renewalCycleFilter?.addEventListener('change', () => {
+    const val = renewalCycleFilter.value;
+    document.querySelectorAll('.schedule-table-row').forEach(row => {
+      row.hidden = val === 'all' ? false : row.dataset.status !== val;
+    });
   });
 
   document.querySelectorAll('.record-select').forEach(select => {
@@ -645,7 +1979,8 @@ export const bind = () => {
           })
           .eq('id', account.id)
           .then(({ error }) => {
-            if (error) alert(`Could not update scholar record: ${error.message}`);
+            if (error) showToast(`Could not update scholar record: ${error.message}`, 'error');
+            else showToast('Scholar compliance record updated.', 'success');
           });
       }
       saveAccounts(
@@ -659,6 +1994,9 @@ export const bind = () => {
             : account
         )
       );
+      if (!cloudReady()) {
+        showToast('Scholar compliance record updated.', 'success');
+      }
 
       if (select.classList.contains('requirement-select')) {
         const isLacking = select.value === 'Lacking';
@@ -678,9 +2016,9 @@ export const bind = () => {
 
   document.querySelectorAll('.help-status-select').forEach(select => {
     select.onchange = () => {
-      const row = select.closest('.help-request-row');
+      const ticketId = select.dataset.ticketId || select.closest('.help-ticket-card')?.dataset.helpTicket;
       const requests = getHelpRequests();
-      const request = requests.find(item => item.id === row.dataset.helpRequestId);
+      const request = requests.find(item => String(item.id) === String(ticketId));
       if (!request) return;
       if (cloudReady()) {
         supabase
@@ -692,13 +2030,151 @@ export const bind = () => {
           })
           .eq('id', Number(request.id))
           .then(({ error }) => {
-            if (error) alert(`Could not update help request: ${error.message}`);
+            if (error) showToast(`Could not update help request: ${error.message}`, 'error');
+            else showToast(`Ticket marked as ${select.value}.`, 'info');
           });
       }
       request.status = select.value;
       saveHelpRequests(requests);
+      if (!cloudReady()) {
+        showToast(`Ticket marked as ${select.value}.`, 'info');
+      }
       select.classList.toggle('lacking', select.value === 'Pending');
       select.classList.toggle('complete', select.value === 'Resolved');
+    };
+  });
+
+  const filterHelpRequests = () => {
+    const query = document.querySelector('#help-request-search')?.value.trim().toLowerCase() || '';
+    const status = document.querySelector('#help-status-filter')?.value || 'all';
+    const category = document.querySelector('#help-category-filter')?.value || 'all';
+    let visible = 0;
+    document.querySelectorAll('.help-ticket-card').forEach(ticket => {
+      const matchesSearch = !query || (ticket.dataset.search || '').includes(query);
+      const matchesStatus = status === 'all' || ticket.dataset.status === status;
+      const matchesCategory = category === 'all' || ticket.dataset.category === category;
+      const matches = matchesSearch && matchesStatus && matchesCategory;
+      ticket.hidden = !matches;
+      if (matches) visible++;
+    });
+    const empty = document.querySelector('#help-filter-empty');
+    if (empty) empty.hidden = visible > 0;
+  };
+  document.querySelector('#help-request-search')?.addEventListener('input', filterHelpRequests);
+  document.querySelector('#help-status-filter')?.addEventListener('change', filterHelpRequests);
+  document.querySelector('#help-category-filter')?.addEventListener('change', filterHelpRequests);
+
+  document.querySelectorAll('[data-help-reply-form]').forEach(form => {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const id = form.dataset.helpReplyForm;
+      const reply = form.querySelector('.help-reply-input')?.value.trim();
+      if (!reply) return showToast('Please write a reply before sending.', 'warning');
+      const now = new Date().toISOString();
+      const requests = getHelpRequests();
+      const request = requests.find(item => String(item.id) === String(id));
+      if (!request) return;
+
+      request.thread = Array.isArray(request.thread) && request.thread.length
+        ? request.thread
+        : [
+            ...(request.message ? [{ sender: 'student', senderName: request.userName || 'Student', text: request.message, createdAt: request.createdAt }] : []),
+            ...(request.adminReply ? [{ sender: 'admin', senderName: 'Administration', text: request.adminReply, createdAt: request.repliedAt || request.createdAt }] : [])
+          ];
+
+      request.thread.push({
+        sender: 'admin',
+        senderName: 'Scholarship Administration',
+        text: reply,
+        createdAt: now
+      });
+      request.adminReply = reply;
+      request.repliedAt = now;
+      request.status = 'Resolved';
+
+      const btn = form.querySelector('button[type="submit"]');
+      if (cloudReady()) {
+        await withLoading(btn, async () => {
+          const { error } = await supabase.from('help_requests').update({
+            admin_reply: reply,
+            replied_by: getCurrentUser().id,
+            replied_at: now,
+            status: 'Resolved',
+            resolved_by: getCurrentUser().id,
+            resolved_at: now,
+            thread: JSON.stringify(request.thread)
+          }).eq('id', Number(id));
+          if (error) return showToast(`Could not send reply: ${error.message}`, 'error');
+          await loadCloudWorkspace(getCurrentUser());
+        });
+      } else {
+        saveHelpRequests(requests);
+      }
+
+      // Dispatch in-app notification to student
+      addNotification({
+        type: 'help',
+        title: `Support Ticket Updated: ${request.subject}`,
+        message: `Admin reply: "${reply.slice(0, 100)}${reply.length > 100 ? '...' : ''}"`,
+        targetEmail: request.userEmail,
+        priority: 'normal'
+      });
+
+      showToast('Support ticket response sent successfully.', 'success');
+      adminHelpRequestsPage();
+    });
+  });
+
+  document.querySelectorAll('[data-save-internal-note]').forEach(button => {
+    button.onclick = async () => {
+      const ticketId = button.dataset.saveInternalNote;
+      const input = document.querySelector(`#internal-notes-${ticketId}`);
+      if (!input) return;
+      const notes = input.value.trim();
+
+      const requests = getHelpRequests();
+      const ticket = requests.find(r => String(r.id) === String(ticketId));
+      if (!ticket) return showToast('Ticket record not found.', 'error');
+
+      ticket.internalNotes = notes;
+      saveHelpRequests(requests);
+
+      if (cloudReady()) {
+        try {
+          await supabase.from('help_requests').update({ internal_notes: notes }).eq('id', ticketId);
+        } catch (e) {
+          console.warn('Could not sync internal notes to Supabase:', e);
+        }
+      }
+
+      showToast('Internal evaluation note saved.', 'success');
+      adminHelpRequestsPage();
+    };
+  });
+
+  document.querySelectorAll('[data-archive-help]').forEach(button => {
+    button.onclick = () => {
+      const id = button.dataset.archiveHelp;
+      openConfirmModal({
+        title: 'Archive Support Ticket',
+        message: 'Archive this resolved inquiry ticket?',
+        details: 'The ticket will be moved to the archives and cleared from the active queue.',
+        confirmText: 'Archive Ticket',
+        type: 'primary',
+        iconName: 'archive',
+        onConfirm: async () => {
+          const now = new Date().toISOString();
+          if (cloudReady()) {
+            const { error } = await supabase.from('help_requests').update({ archived_at: now }).eq('id', Number(id));
+            if (error) return showToast(`Could not archive ticket: ${error.message}`, 'error');
+            await loadCloudWorkspace(getCurrentUser());
+          } else {
+            saveHelpRequests(getHelpRequests().map(item => String(item.id) === String(id) ? { ...item, archivedAt: now } : item));
+          }
+          showToast('Ticket archived successfully.', 'info');
+          navigateTo('help-requests', true);
+        }
+      });
     };
   });
 
@@ -706,23 +2182,30 @@ export const bind = () => {
     button.onclick = () => {
       const row = button.closest('.student-record-row');
       const email = row.dataset.accountEmail;
-      if (!confirm(`Delete ${row.children[1]?.textContent.trim() || 'this'} scholar record? This cannot be undone.`)) return;
-      const account = getAccounts().find(item => item.email === email);
-      if (cloudReady() && account?.id) {
-        supabase
-          .from('profiles')
-          .update({ scholar_status: 'Non-active' })
-          .eq('id', account.id)
-          .then(({ error }) => {
-            if (error) return alert(`Could not deactivate scholar: ${error.message}`);
-            alert('Cloud scholar accounts are deactivated rather than deleted to preserve their account and audit data.');
-            navigateTo('overview', true);
-          });
-        return;
-      }
-      if (email) saveAccounts(getAccounts().filter(account => account.email !== email));
-      row.style.opacity = '0';
-      setTimeout(() => row.remove(), 160);
+      const scholarName = row.children[1]?.textContent.trim() || 'this';
+      openConfirmModal({
+        title: 'Delete Scholar Record',
+        message: `Delete ${scholarName} scholar record?`,
+        details: 'This action permanently removes the record from the active roster. This cannot be undone.',
+        confirmText: 'Delete Record',
+        type: 'danger',
+        onConfirm: async () => {
+          const account = getAccounts().find(item => item.email === email);
+          if (cloudReady() && account?.id) {
+            const { error } = await supabase
+              .from('profiles')
+              .update({ scholar_status: 'Non-active' })
+              .eq('id', account.id);
+            if (error) return showToast(`Could not deactivate scholar: ${error.message}`, 'error');
+            showToast('Cloud scholar accounts are deactivated rather than deleted to preserve audit data.', 'info');
+            return navigateTo('overview', true);
+          }
+          if (email) saveAccounts(getAccounts().filter(account => account.email !== email));
+          row.style.opacity = '0';
+          setTimeout(() => row.remove(), 160);
+          showToast(`Scholar record for ${scholarName} deleted.`, 'info');
+        }
+      });
     };
   });
 
@@ -730,6 +2213,17 @@ export const bind = () => {
     event.preventDefault();
     const loginId = document.querySelector('#login-email').value.trim().toLowerCase();
     const password = document.querySelector('#login-password').value;
+    const rememberMe = document.querySelector('#login-remember-me')?.checked ?? true;
+
+    const persistSession = userObj => {
+      if (rememberMe) {
+        localStorage.setItem('scholarHubCurrentUser', JSON.stringify(userObj));
+        sessionStorage.removeItem('scholarHubCurrentUser');
+      } else {
+        sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(userObj));
+        localStorage.removeItem('scholarHubCurrentUser');
+      }
+    };
 
     if (supabase) {
       try {
@@ -741,7 +2235,7 @@ export const bind = () => {
               : error.message
           );
         }
-        const account = await loadCloudSession();
+        const account = await loadCloudSession(rememberMe);
         if (!account) return showAuthMessage('Your account profile is not ready yet. Please try again in a moment.');
         return navigateTo('overview', true);
       } catch (err) {
@@ -759,7 +2253,7 @@ export const bind = () => {
       }
       const inputHash = await hashPassword(password);
       if (inputHash !== ADMIN_PASSWORD_HASH) return showAuthMessage('Incorrect password. Please try again.');
-      localStorage.setItem('scholarHubCurrentUser', JSON.stringify(ADMIN));
+      persistSession(ADMIN);
       return navigateTo('overview', true);
     }
 
@@ -776,7 +2270,7 @@ export const bind = () => {
     }
 
     const { password: _pw, ...safeAccount } = account;
-    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(safeAccount));
+    persistSession(safeAccount);
     navigateTo('overview', true);
   });
 
@@ -788,6 +2282,15 @@ export const bind = () => {
     if (!/^\+?[0-9\s-]{7,20}$/.test(contact)) return showAuthMessage('Please enter a valid contact number.');
 
     const rawPassword = document.querySelector('#register-password').value;
+    const confirmPassword = document.querySelector('#register-confirm-password')?.value;
+
+    if (rawPassword.length < 6) {
+      return showAuthMessage('Password must be at least 6 characters long.');
+    }
+    if (confirmPassword !== undefined && rawPassword !== confirmPassword) {
+      return showAuthMessage('Passwords do not match. Please verify both password fields.');
+    }
+
     const account = {
       email,
       phone: contact,
@@ -850,11 +2353,99 @@ export const bind = () => {
     navigateTo('overview', true);
   });
 
+  document.querySelector('#forgot-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const email = document.querySelector('#forgot-email')?.value.trim().toLowerCase() || '';
+    const phone = document.querySelector('#forgot-phone')?.value.trim() || '';
+    const password = document.querySelector('#forgot-password')?.value || '';
+    const confirmPassword = document.querySelector('#forgot-confirm-password')?.value || '';
+
+    if (!email || !email.includes('@')) {
+      return showAuthMessage('Please enter a valid registered email address.');
+    }
+    if (password.length < 6) {
+      return showAuthMessage('New password must be at least 6 characters long.');
+    }
+    if (password !== confirmPassword) {
+      return showAuthMessage('New passwords do not match. Please verify your confirmation.');
+    }
+
+    if (supabase) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin
+        });
+        if (error) return showAuthMessage(`Password recovery failed: ${error.message}`);
+        clearAuthMessage();
+        showAuthMessage('A password recovery email has been sent. Please check your inbox.', 'success');
+        return authView('login');
+      } catch (err) {
+        return showAuthMessage(err.message || 'Unable to communicate with authentication server.');
+      }
+    }
+
+    const accounts = getAccounts();
+    const account = accounts.find(a => a.email.toLowerCase() === email);
+    if (!account) {
+      return showAuthMessage('No registered account was found with this email address.');
+    }
+
+    const cleanInputPhone = phone.replace(/\D/g, '');
+    const cleanAccountPhone = (account.phone || '').replace(/\D/g, '');
+    if (cleanInputPhone && cleanAccountPhone && !cleanAccountPhone.endsWith(cleanInputPhone) && !cleanInputPhone.endsWith(cleanAccountPhone)) {
+      return showAuthMessage('The contact number provided does not match the records for this account.');
+    }
+
+    const hashed = await hashPassword(password);
+    account.password = hashed;
+    saveAccounts(accounts.map(a => a.email.toLowerCase() === email ? account : a));
+    clearAuthMessage();
+    showAuthMessage('Your password has been successfully reset. Please sign in with your new password.', 'success');
+    authView('login');
+    const loginEmailInput = document.querySelector('#login-email');
+    if (loginEmailInput) loginEmailInput.value = email;
+  });
+
+  document.querySelector('#forgot-submit-ticket-btn')?.addEventListener('click', () => {
+    const email = document.querySelector('#forgot-email')?.value.trim().toLowerCase() || '';
+    const phone = document.querySelector('#forgot-phone')?.value.trim() || '';
+    if (!email || !email.includes('@')) {
+      return showAuthMessage('Please enter your registered student email address above first.');
+    }
+
+    const accounts = getAccounts();
+    const account = accounts.find(a => a.email.toLowerCase() === email);
+    const requests = getHelpRequests();
+    const newTicket = {
+      id: Date.now(),
+      subject: `Urgent: Account Password Recovery (${email})`,
+      category: 'Account / Profile Issue',
+      message: `Student scholar requires administrative assistance recovering account credentials for ${email}. Provided contact number: ${phone || 'Not specified'}.`,
+      status: 'Pending',
+      userEmail: email,
+      studentName: account?.name || 'Student Scholar',
+      createdAt: new Date().toISOString(),
+      thread: [
+        {
+          sender: 'student',
+          senderName: account?.name || 'Student Scholar',
+          message: `Hello Coordinator, I cannot access my account and need assistance with password recovery for ${email}.`,
+          timestamp: new Date().toISOString()
+        }
+      ]
+    };
+    saveHelpRequests([newTicket, ...requests]);
+    clearAuthMessage();
+    showAuthMessage('A password recovery ticket has been submitted to scholarship coordinators. An officer will assist you.', 'success');
+    authView('login');
+  });
+
   document.querySelectorAll('.logout').forEach(x => {
     x.onclick = () => {
       openLogoutModal(async () => {
         if (supabase) await supabase.auth.signOut();
         localStorage.removeItem('scholarHubCurrentUser');
+        sessionStorage.removeItem('scholarHubCurrentUser');
         setAccountsCache([]);
         clearAuthMessage();
         navigateTo('login', true);

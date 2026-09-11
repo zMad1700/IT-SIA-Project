@@ -1,11 +1,12 @@
 // Modern Student Dashboard View matching reference UI & Renewal Monitoring Workflow
 
 import { icon, escapeHtml } from '../../utils/dom.js';
-import { formatSchedule, timeGreeting } from '../../utils/formatters.js';
+import { formatSchedule, timeGreeting, postTime } from '../../utils/formatters.js';
 import { profileCompletion } from '../../utils/analytics.js';
 import { getCurrentUser } from '../../services/auth.js';
 import { getRenewalDeadlines, getRenewalSchedules } from '../../services/storage.js';
 import { sidebar, topbar } from '../../components/layout.js';
+import { studentUpdatesMarkup } from '../../components/announcements.js';
 import { refresh } from '../../events.js';
 
 export const studentRenewalMarkup = user => {
@@ -96,6 +97,14 @@ export const studentStatusHeroMarkup = user => {
   const scholarType = user?.scholarType || 'Old scholar';
   const programName = 'Academic Excellence Scholarship Grant';
 
+  const documentKey = `scholarHubRenewalDocuments:${user?.id || user?.email || 'guest'}`;
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(documentKey) || '{}'); } catch { uploaded = {}; }
+  const cogUploaded = Boolean(uploaded.cog);
+  const corUploaded = Boolean(uploaded.cor);
+  const idUploaded = Boolean(uploaded['student-id']);
+  const allMandatoryUploaded = cogUploaded && corUploaded && idUploaded;
+
   return `<section class="modern-card student-status-hero-card">
     <div class="status-hero-header">
       <div class="status-hero-info">
@@ -113,22 +122,30 @@ export const studentStatusHeroMarkup = user => {
           ${icon(isActive ? 'shield-check' : 'shield-alert', 14)}
           <span>${isActive ? 'Active Scholar' : 'Non-active'}</span>
         </span>
-        <span class="status-pill ${isLacking ? 'status-pill-danger' : 'status-pill-done'}">
-          ${icon(isLacking ? 'alert-triangle' : 'check-circle-2', 14)}
-          <span>${isLacking ? 'Action Required: Lacking Documents' : 'Requirements Verified'}</span>
+        <span class="status-pill ${isLacking ? (allMandatoryUploaded ? 'status-pill-warning' : 'status-pill-danger') : 'status-pill-done'}">
+          ${icon(isLacking ? (allMandatoryUploaded ? 'clock-3' : 'alert-triangle') : 'check-circle-2', 14)}
+          <span>${isLacking ? (allMandatoryUploaded ? 'Under Review · Documents Submitted' : 'Action Required: Lacking Documents') : 'Requirements Verified'}</span>
         </span>
       </div>
     </div>
 
     ${
       isLacking
-        ? `<div class="status-hero-alert danger">
-            <div class="alert-icon-wrap">${icon('alert-circle', 18)}</div>
-            <div class="alert-text-wrap">
-              <strong>Action Required: Renewal Documents Pending Verification</strong>
-              <p>The scholarship coordinator has noted missing or pending submission requirements for your account. Please check the compliance checklist below and submit your documents before the renewal deadline.</p>
-            </div>
-          </div>`
+        ? (allMandatoryUploaded
+            ? `<div class="status-hero-alert warning">
+                <div class="alert-icon-wrap">${icon('clock-3', 18)}</div>
+                <div class="alert-text-wrap">
+                  <strong>Renewal Documents Submitted · Verification In Progress</strong>
+                  <p>You have submitted all required renewal documents. The scholarship coordinator is reviewing your files for compliance verification. Check your appointment schedule below.</p>
+                </div>
+              </div>`
+            : `<div class="status-hero-alert danger">
+                <div class="alert-icon-wrap">${icon('alert-circle', 18)}</div>
+                <div class="alert-text-wrap">
+                  <strong>Action Required: Renewal Documents Pending Verification</strong>
+                  <p>The scholarship coordinator has noted missing or pending submission requirements for your account. Please check the compliance checklist below and submit your documents before the renewal deadline.</p>
+                </div>
+              </div>`)
         : `<div class="status-hero-alert success">
             <div class="alert-icon-wrap">${icon('sparkles', 18)}</div>
             <div class="alert-text-wrap">
@@ -142,33 +159,45 @@ export const studentStatusHeroMarkup = user => {
 
 export const requirementsChecklistMarkup = user => {
   const isLacking = user?.requirementsStatus === 'Lacking';
+  const documentKey = `scholarHubRenewalDocuments:${user?.id || user?.email || 'guest'}`;
+  let uploaded = {};
+  try { uploaded = JSON.parse(localStorage.getItem(documentKey) || '{}'); } catch { uploaded = {}; }
 
   const checklistItems = [
     {
       title: 'Certificate of Grades (COG)',
+      id: 'cog',
       detail: 'Official transcript or grade slip from the preceding semester with no failing grades.',
-      status: isLacking ? 'Lacking' : 'Complete',
+      status: uploaded.cog ? 'Submitted' : (isLacking ? 'Lacking' : 'Pending'),
       required: true
     },
     {
       title: 'Certificate of Registration / Enrollment (COR)',
+      id: 'cor',
       detail: 'Official registration form stamped by your university registrar.',
-      status: 'Complete',
+      status: uploaded.cor ? 'Submitted' : 'Pending',
       required: true
     },
     {
       title: 'Valid Student ID / Clearance',
+      id: 'student-id',
       detail: 'Current academic year student identification card or department clearance.',
-      status: 'Complete',
+      status: uploaded['student-id'] ? 'Submitted' : 'Pending',
       required: true
     },
     {
       title: 'Barangay Certificate of Residency',
+      id: 'barangay-clearance',
       detail: 'Proof of residency or local government scholarship endorsement.',
-      status: 'Complete',
+      status: uploaded['barangay-clearance'] ? 'Submitted' : 'Pending',
       required: false
     }
   ];
+
+  const mandatoryItems = checklistItems.filter(i => i.required);
+  const mandatorySubmitted = mandatoryItems.filter(i => i.status === 'Submitted').length;
+  const pendingMandatory = mandatoryItems.length - mandatorySubmitted;
+  const allMandatoryDone = pendingMandatory === 0;
 
   return `<section class="modern-card requirements-checklist-card">
     <div class="card-header">
@@ -177,8 +206,8 @@ export const requirementsChecklistMarkup = user => {
         <p class="card-subtitle">Official documentary requirements required by the scholarship office for verification.</p>
       </div>
       <div class="checklist-header-badge">
-        <span class="status-pill ${isLacking ? 'status-pill-warning' : 'status-pill-done'}">
-          ${isLacking ? `${icon('clock', 13)} 1 Lacking Item` : `${icon('check-check', 13)} 4 of 4 Verified`}
+        <span class="status-pill ${allMandatoryDone ? 'status-pill-done' : isLacking ? 'status-pill-warning' : 'status-pill-pending'}">
+          ${allMandatoryDone ? `${icon('check-check', 13)} All Mandatory Items Submitted` : `${icon('clock', 13)} ${pendingMandatory} Pending Requirement${pendingMandatory === 1 ? '' : 's'}`}
         </span>
       </div>
     </div>
@@ -186,22 +215,25 @@ export const requirementsChecklistMarkup = user => {
     <div class="checklist-items-grid">
       ${checklistItems
         .map(item => {
-          const itemComplete = item.status === 'Complete';
-          return `<div class="checklist-item-row ${itemComplete ? 'verified' : 'lacking'}">
+          const submitted = item.status === 'Submitted';
+          const fileInfo = uploaded[item.id];
+          return `<div class="checklist-item-card ${submitted ? 'checked' : ''}">
             <div class="checklist-check-box">
-              ${icon(itemComplete ? 'check' : 'alert-triangle', 15)}
+              ${icon(submitted ? 'check' : 'upload-cloud', 15)}
             </div>
             <div class="checklist-text-col">
               <div class="checklist-title-row">
                 <strong>${escapeHtml(item.title)}</strong>
-                ${item.required ? '<span class="req-mandatory-pill">Mandatory</span>' : ''}
+                ${item.required ? '<span class="req-mandatory-pill">Mandatory</span>' : '<span class="req-optional-pill">Optional</span>'}
               </div>
               <p>${escapeHtml(item.detail)}</p>
+              ${fileInfo ? `<div class="uploaded-doc-badge">${icon('file-text', 12)} <span class="doc-file-name">${escapeHtml(fileInfo.name || 'Document uploaded')}</span></div>` : ''}
             </div>
             <div class="checklist-status-col">
-              <span class="status-pill ${itemComplete ? 'status-pill-done' : 'status-pill-danger'}">
-                ${itemComplete ? 'Verified' : 'Lacking'}
+              <span class="status-pill ${submitted ? 'status-pill-done' : item.status === 'Lacking' ? 'status-pill-danger' : 'status-pill-pending'}">
+                ${submitted ? 'Submitted' : item.status}
               </span>
+              <label class="secondary-pill-btn checklist-upload-btn">${icon('paperclip', 13)} ${fileInfo ? 'Replace file' : 'Upload file'}<input class="renewal-document-upload" type="file" accept=".pdf,image/*" data-document-id="${item.id}" data-document-key="${escapeHtml(documentKey)}" hidden></label>
             </div>
           </div>`;
         })
@@ -255,6 +287,9 @@ export const studentDashboard = () => {
 
         <!-- Requirements Compliance Checklist -->
         ${requirementsChecklistMarkup(user)}
+
+        <!-- Official Campus Announcements Feed -->
+        ${studentUpdatesMarkup(user)}
       </main>
     </div>
   </div>`;

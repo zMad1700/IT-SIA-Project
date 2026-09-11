@@ -14,6 +14,8 @@ import { adminScholarshipsPage } from './views/admin/scholarships.js';
 import { adminDetail } from './views/admin/scholars.js';
 import { registeredAccountsPage } from './views/admin/registered.js';
 import { adminHelpRequestsPage } from './views/admin/helpRequests.js';
+import { adminApplicationsPage } from './views/admin/applications.js';
+import { notificationsPage } from './views/notifications.js';
 
 let currentRoute = 'login';
 
@@ -55,12 +57,15 @@ export const renderRoute = async (route = 'overview') => {
     if (route === 'active-scholars') return adminDetail('scholarships');
     if (route === 'scholars') return adminDetail('scholars');
     if (route === 'help-requests') return adminHelpRequestsPage();
+    if (route === 'applications') return adminApplicationsPage();
     if (route === 'registered-accounts') return registeredAccountsPage();
+    if (route === 'notifications') return notificationsPage();
     return adminDashboard();
   }
 
   if (route === 'my-profile') return profilePage();
   if (route === 'scholarships') return scholarshipsPage();
   if (route === 'help-center') return helpCenterPage();
+  if (route === 'notifications') return notificationsPage();
   return studentDashboard();
 };

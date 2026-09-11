@@ -71,6 +71,8 @@ export const adminDetail = type => {
               ${icon('user-plus', 16)}
               <span>Add Scholar</span>
             </button>
+            <button class="secondary-pill-btn" type="button" data-export-scholars>${icon('download', 16)} <span>Export CSV</span></button>
+            <button class="secondary-pill-btn" type="button" data-print-roster>${icon('printer', 16)} <span>Print</span></button>
           </div>
         </section>
 
@@ -94,9 +96,15 @@ export const adminDetail = type => {
               </div>
             </div>
           </div>
+          <div id="roster-bulk-actions" class="roster-bulk-actions" data-roster-type="${escapeHtml(type)}">
+            <label class="roster-select-all"><input id="roster-select-all" type="checkbox"> Select visible</label>
+            <button class="secondary-pill-btn" type="button" data-bulk-requirements="Complete">Mark requirements complete</button>
+            <button class="secondary-pill-btn" type="button" data-bulk-status="Active">Mark active</button>
+          </div>
 
           <div class="modern-data-table-wrap">
             <div class="table-head-row student-record-head">
+              <span><span class="sr-only">Select</span></span>
               <span>LAST NAME</span>
               <span>FIRST NAME</span>
               <span>M.I.</span>
@@ -112,6 +120,7 @@ export const adminDetail = type => {
                   ? records
                       .map(
                         row => `<div class="table-data-row student-record-row" data-account-email="${escapeHtml(row[8])}">
+                          <label class="roster-row-check"><input class="roster-select" type="checkbox" aria-label="Select ${escapeHtml(row[0])}"></label>
                           <strong>${escapeHtml(row[0])}</strong>
                           <span>${escapeHtml(row[1])}</span>
                           <span class="text-muted-cell">${escapeHtml(row[2])}</span>
@@ -136,7 +145,18 @@ export const adminDetail = type => {
                         </div>`
                       )
                       .join('')
-                  : `<div class="empty-state-banner">${icon('users', 20)} <span>No scholars found in this category.</span></div>`
+                  : `
+                    <div class="empty-state-card">
+                      <div class="empty-state-icon-wrap">${icon('users', 26)}</div>
+                      <h3 class="empty-state-title">No Scholars Found</h3>
+                      <p class="empty-state-desc">There are currently no scholars matching this category. You can enroll returning scholars into the roster.</p>
+                      <div class="empty-state-cta-wrap">
+                        <button type="button" class="primary-pill-btn" data-open-add-scholar>
+                          ${icon('user-plus', 14)} <span>Add Returning Scholar</span>
+                        </button>
+                      </div>
+                    </div>
+                  `
               }
             </div>
           </div>

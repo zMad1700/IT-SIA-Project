@@ -62,7 +62,7 @@ export const notificationCenterMarkup = user => {
                 const { iconName, colorClass } = getNotifIconInfo(item.type);
                 const isUrgent = item.priority === 'urgent' || item.priority === 'high';
 
-                return `<article class="notif-item ${isRead ? 'read' : 'unread'} ${isUrgent ? 'urgent' : ''}" data-notif-id="${escapeHtml(item.id)}">
+                return `<article class="notif-item ${isRead ? 'read' : 'unread'} ${isUrgent ? 'urgent' : ''}" data-notif-item="${escapeHtml(item.id)}" data-notif-type="${escapeHtml(item.type)}" role="button" tabindex="0" title="Click to open dedicated notifications page">
                   <div class="notif-icon-badge ${colorClass}">
                     ${icon(iconName, 16)}
                   </div>
@@ -89,7 +89,11 @@ export const notificationCenterMarkup = user => {
     </div>
 
     <div class="notifs-footer">
-      <small>${user?.role === 'admin' ? 'Broadcasting system active' : 'Live updates synchronized with scholarship office'}</small>
+      <button type="button" class="view-all-notifs-btn" data-go-notifications>
+        ${icon('bell', 13)}
+        <span>Open Notification Center</span>
+        ${icon('arrow-right', 13)}
+      </button>
     </div>
   </div>`;
 };

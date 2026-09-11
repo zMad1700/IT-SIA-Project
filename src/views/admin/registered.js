@@ -49,6 +49,14 @@ export const registeredAccountsPage = () => {
             <p class="hero-page-subtitle">All student accounts created directly through the ScholarHub registration portal.</p>
           </div>
           <div class="hero-header-actions">
+            <button class="secondary-pill-btn" type="button" data-export-registered>
+              ${icon('download', 16)}
+              <span>Export CSV</span>
+            </button>
+            <button class="secondary-pill-btn" type="button" data-print-registered>
+              ${icon('printer', 16)}
+              <span>Print</span>
+            </button>
             <div class="stat-trend-badge trend-up" style="font-size: 13px; padding: 8px 16px;">
               ${icon('users', 16)}
               <span>${registeredAccounts.length} Registered</span>
@@ -94,6 +102,7 @@ export const registeredAccountsPage = () => {
               <span>SCHOOL &amp; COURSE</span>
               <span>YEAR</span>
               <span>REGISTERED DATE</span>
+              <span>ACTIONS</span>
             </div>
             <div id="registered-account-rows" class="table-body-rows">
               ${
@@ -124,15 +133,43 @@ export const registeredAccountsPage = () => {
                             </div>
                             <span class="year-cell">${escapeHtml(accountYearLevel(account) || '—')}</span>
                             <small class="date-cell">${registrationDate(account.registeredAt)}</small>
+                            <div class="registered-actions-cell" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                              <button type="button" class="table-edit-btn" data-view-registered-profile="${escapeHtml(account.email)}" title="View complete profile">
+                                ${icon('eye', 13)} Profile
+                              </button>
+                              ${account.scholarStatus !== 'Active' ? `
+                                <button type="button" class="primary-pill-btn" data-enroll-as-scholar="${escapeHtml(account.email)}" style="padding:4px 9px;font-size:11px;" title="Enroll into active scholar roster">
+                                  ${icon('award', 12)} Enroll
+                                </button>
+                              ` : `
+                                <span class="status-pill status-pill-done" style="font-size:10.5px;padding:3px 7px;">Enrolled</span>
+                              `}
+                              <button type="button" class="delete-row modern-icon-btn" data-delete-registered-user="${escapeHtml(account.email)}" title="Delete account" style="color:var(--danger,#ef4444);padding:4px 6px;">
+                                ${icon('trash-2', 14)}
+                              </button>
+                            </div>
                           </div>`
                       )
                       .join('')
-                  : `<div class="empty-state-banner">${icon('users', 20)} <span>No student accounts have registered yet.</span></div>`
+                  : `
+                    <div class="empty-state-card">
+                      <div class="empty-state-icon-wrap">${icon('users', 26)}</div>
+                      <h3 class="empty-state-title">No Registered Accounts</h3>
+                      <p class="empty-state-desc">No students have self-registered on the portal yet. Registered users will appear here automatically.</p>
+                    </div>
+                  `
               }
             </div>
           </div>
-          <div id="registered-empty" class="empty-state-banner" hidden>
-            ${icon('search-x', 20)} <span>No registered account matches your search criteria.</span>
+          <div id="registered-empty" class="empty-state-card" hidden>
+            <div class="empty-state-icon-wrap warning">${icon('search-x', 26)}</div>
+            <h3 class="empty-state-title">No Accounts Match Search</h3>
+            <p class="empty-state-desc">No registered student accounts match your search keywords or campus filter.</p>
+            <div class="empty-state-cta-wrap">
+              <button type="button" class="secondary-pill-btn" data-reset-registered-search>
+                ${icon('rotate-ccw', 14)} <span>Clear Search Query</span>
+              </button>
+            </div>
           </div>
         </section>
       </main>

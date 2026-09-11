@@ -65,9 +65,28 @@ export const accountFromProfile = profile => ({
   registeredAt: profile.created_at
 });
 
+export const evaluatePasswordStrength = password => {
+  if (!password) return { score: 0, label: '', percent: 0, class: '' };
+  let score = 0;
+  if (password.length >= 6) score += 1;
+  if (password.length >= 8) score += 1;
+  if (/[A-Z]/.test(password)) score += 1;
+  if (/[0-9]/.test(password)) score += 1;
+  if (/[^A-Za-z0-9]/.test(password)) score += 1;
+
+  if (score <= 2) {
+    return { score, label: 'Weak', percent: 33, class: 'weak' };
+  } else if (score <= 4) {
+    return { score, label: 'Medium', percent: 66, class: 'medium' };
+  } else {
+    return { score, label: 'Strong', percent: 100, class: 'strong' };
+  }
+};
+
 export const getCurrentUser = () => {
   try {
-    return JSON.parse(localStorage.getItem('scholarHubCurrentUser') || 'null');
+    const raw = localStorage.getItem('scholarHubCurrentUser') || sessionStorage.getItem('scholarHubCurrentUser');
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
@@ -81,9 +100,13 @@ export const isAdminSession = () => {
 export const updateCurrentUser = changes => {
   const previousUser = getCurrentUser();
   const user = { ...previousUser, ...changes };
-  localStorage.setItem('scholarHubCurrentUser', JSON.stringify(user));
+  if (sessionStorage.getItem('scholarHubCurrentUser')) {
+    sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(user));
+  } else {
+    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(user));
+  }
   if (user.email !== ADMIN.email) {
-    saveAccounts(getAccounts().map(account => (account.email === previousUser.email ? { ...account, ...changes } : account)));
+    saveAccounts(getAccounts().map(account => (account.email === previousUser?.email ? { ...account, ...changes } : account)));
   }
   if (supabase && user.id) {
     supabase.from('profiles').update(profileFields(user)).eq('id', user.id).then(({ error }) => {
@@ -93,14 +116,20 @@ export const updateCurrentUser = changes => {
   return user;
 };
 
-export const loadCloudSession = async () => {
+export const loadCloudSession = async (remember = true) => {
   if (!supabase) return getCurrentUser();
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
   if (error || !profile) return null;
   const account = accountFromProfile(profile);
-  localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  if (remember) {
+    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+    sessionStorage.removeItem('scholarHubCurrentUser');
+  } else {
+    sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+    localStorage.removeItem('scholarHubCurrentUser');
+  }
   if (account.role === 'admin') {
     const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
     const accounts = (profiles || []).map(accountFromProfile);

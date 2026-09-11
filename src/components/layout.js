@@ -6,6 +6,9 @@ import { getUnreadNotificationsCount } from '../services/storage.js';
 import { notificationCenterMarkup } from './notifications.js';
 
 export const sidebar = (admin, page = 'overview') => {
+  const user = getCurrentUser();
+  const unreadCount = getUnreadNotificationsCount(user);
+
   const mainNav = admin
     ? [
         ['layout-grid', 'Overview', 'overview'],
@@ -20,10 +23,12 @@ export const sidebar = (admin, page = 'overview') => {
 
   const secondaryNav = admin
     ? [
-        ['clock-3', 'Pending Review', 'help-requests']
+        ['clock-3', 'Pending Review', 'help-requests'],
+        ['bell', 'Notifications', 'notifications']
       ]
     : [
-        ['help-circle', 'Help Center', 'help-center']
+        ['help-circle', 'Help Center', 'help-center'],
+        ['bell', 'Notifications', 'notifications']
       ];
 
   return `<aside class="sidebar">
@@ -34,10 +39,10 @@ export const sidebar = (admin, page = 'overview') => {
       <span class="brand-title">Scholar<span>Hub</span></span>
     </div>
 
-    <div class="sidebar-search">
+    <div class="sidebar-search" data-open-command-palette role="button" tabindex="0" title="Open Command Palette (Ctrl+K)">
       ${icon('search', 16)}
-      <input type="text" placeholder="Search..." aria-label="Quick search" readonly />
-      <span class="search-filter-icon">${icon('sliders-horizontal', 13)}</span>
+      <input type="text" placeholder="Quick search..." aria-label="Quick search (Ctrl+K)" readonly data-open-command-palette />
+      <span class="search-filter-icon" data-open-command-palette><kbd class="sidebar-search-kbd">⌘K</kbd></span>
     </div>
 
     <div class="sidebar-section">
@@ -64,6 +69,7 @@ export const sidebar = (admin, page = 'overview') => {
               `<button class="nav-item ${routeId === page ? 'active' : ''}" data-page="${routeId}">
                 <span class="nav-icon">${icon(iconName, 18)}</span>
                 <span class="nav-label">${label}</span>
+                ${routeId === 'notifications' && unreadCount > 0 ? `<span class="sidebar-badge-count" style="margin-left:auto;background:var(--primary);color:#fff;font-size:10.5px;font-weight:800;padding:1px 6px;border-radius:10px;">${unreadCount}</span>` : ''}
               </button>`
           )
           .join('')}
@@ -91,21 +97,23 @@ export const sidebar = (admin, page = 'overview') => {
 export const topbar = (admin, currentRoute = 'overview') => {
   const user = admin ? { name: 'Administrator' } : getCurrentUser();
   const section =
-    currentRoute === 'my-profile'
-      ? 'My Profile'
-      : currentRoute === 'help-center'
-        ? 'Help Center'
-        : currentRoute === 'help-requests'
-          ? 'Pending Review'
-          : currentRoute === 'registered-accounts'
-            ? 'Registered Accounts'
-            : currentRoute === 'scholarships'
-              ? 'Scholarships'
-              : currentRoute === 'scholars'
-                ? 'New Scholars'
-                : currentRoute === 'active-scholars'
-                  ? 'Active Scholars'
-                  : 'Dashboard';
+    currentRoute === 'notifications'
+      ? 'Notifications'
+      : currentRoute === 'my-profile'
+        ? 'My Profile'
+        : currentRoute === 'help-center'
+          ? 'Help Center'
+          : currentRoute === 'help-requests'
+            ? 'Pending Review'
+            : currentRoute === 'registered-accounts'
+              ? 'Registered Accounts'
+              : currentRoute === 'scholarships'
+                ? 'Scholarships'
+                : currentRoute === 'scholars'
+                  ? 'New Scholars'
+                  : currentRoute === 'active-scholars'
+                    ? 'Active Scholars'
+                    : 'Dashboard';
 
   return `<header class="topbar">
     <div class="topbar-left">
