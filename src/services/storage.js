@@ -561,4 +561,45 @@ export const loadCloudWorkspace = async account => {
   } catch (err) {
     console.warn('Could not load cloud renewal documents:', err);
   }
+
+  if (account.role === 'admin') {
+    try {
+      const { data: profiles, error: profilesError } = await supabase
+        .from('profiles')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (!profilesError && profiles && profiles.length) {
+        const cloudAccounts = profiles.map(p => ({
+          id: p.id,
+          email: p.email,
+          name: p.name,
+          firstName: p.first_name,
+          middleName: p.middle_name,
+          lastName: p.last_name,
+          phone: p.phone,
+          sex: p.sex,
+          birthDate: p.birth_date,
+          purok: p.purok,
+          barangay: p.barangay,
+          municipality: p.municipality,
+          school: p.school,
+          yearLevel: p.year_level,
+          year: p.year_level,
+          course: p.course,
+          scholarType: p.scholar_type,
+          role: p.role || 'user',
+          photo: p.photo,
+          bio: p.bio,
+          requirementsStatus: p.requirements_status,
+          scholarStatus: p.scholar_status,
+          addedByAdmin: p.added_by_admin,
+          registeredAt: p.created_at
+        }));
+        setAccountsCache(cloudAccounts);
+        saveAccounts(cloudAccounts);
+      }
+    } catch (err) {
+      console.warn('Could not load cloud profiles:', err);
+    }
+  }
 };
