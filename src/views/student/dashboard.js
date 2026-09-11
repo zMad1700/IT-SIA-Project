@@ -4,7 +4,7 @@ import { icon, escapeHtml } from '../../utils/dom.js';
 import { formatSchedule, timeGreeting, postTime } from '../../utils/formatters.js';
 import { profileCompletion } from '../../utils/analytics.js';
 import { getCurrentUser } from '../../services/auth.js';
-import { getRenewalDeadlines, getRenewalSchedules } from '../../services/storage.js';
+import { getRenewalDeadlines, getRenewalSchedules, getRenewalDocs } from '../../services/storage.js';
 import { sidebar, topbar } from '../../components/layout.js';
 import { studentUpdatesMarkup } from '../../components/announcements.js';
 import { refresh } from '../../events.js';
@@ -163,33 +163,41 @@ export const requirementsChecklistMarkup = user => {
   let uploaded = {};
   try { uploaded = JSON.parse(localStorage.getItem(documentKey) || '{}'); } catch { uploaded = {}; }
 
+  const cloudDocs = getRenewalDocs().filter(d => (user?.id && String(d.student_id) === String(user.id)) || d.studentEmail === user?.email);
+  const cloudDocMap = {
+    'cog': cloudDocs.find(d => d.document_type === 'COG'),
+    'cor': cloudDocs.find(d => d.document_type === 'COR'),
+    'student-id': cloudDocs.find(d => d.document_type === 'Student ID'),
+    'barangay-clearance': cloudDocs.find(d => d.document_type === 'Barangay Clearance')
+  };
+
   const checklistItems = [
     {
       title: 'Certificate of Grades (COG)',
       id: 'cog',
       detail: 'Official transcript or grade slip from the preceding semester with no failing grades.',
-      status: uploaded.cog ? 'Submitted' : (isLacking ? 'Lacking' : 'Pending'),
+      status: uploaded.cog || cloudDocMap.cog ? 'Submitted' : (isLacking ? 'Lacking' : 'Pending'),
       required: true
     },
     {
       title: 'Certificate of Registration / Enrollment (COR)',
       id: 'cor',
       detail: 'Official registration form stamped by your university registrar.',
-      status: uploaded.cor ? 'Submitted' : 'Pending',
+      status: uploaded.cor || cloudDocMap.cor ? 'Submitted' : 'Pending',
       required: true
     },
     {
       title: 'Valid Student ID / Clearance',
       id: 'student-id',
       detail: 'Current academic year student identification card or department clearance.',
-      status: uploaded['student-id'] ? 'Submitted' : 'Pending',
+      status: uploaded['student-id'] || cloudDocMap['student-id'] ? 'Submitted' : 'Pending',
       required: true
     },
     {
       title: 'Barangay Certificate of Residency',
       id: 'barangay-clearance',
       detail: 'Proof of residency or local government scholarship endorsement.',
-      status: uploaded['barangay-clearance'] ? 'Submitted' : 'Pending',
+      status: uploaded['barangay-clearance'] || cloudDocMap['barangay-clearance'] ? 'Submitted' : 'Pending',
       required: false
     }
   ];
@@ -216,7 +224,7 @@ export const requirementsChecklistMarkup = user => {
       ${checklistItems
         .map(item => {
           const submitted = item.status === 'Submitted';
-          const fileInfo = uploaded[item.id];
+          const fileInfo = uploaded[item.id] || (cloudDocMap[item.id] ? { name: cloudDocMap[item.id].file_name || `${item.title} (Cloud Synced)` } : null);
           return `<div class="checklist-item-card ${submitted ? 'checked' : ''}">
             <div class="checklist-check-box">
               ${icon(submitted ? 'check' : 'upload-cloud', 15)}

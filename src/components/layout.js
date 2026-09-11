@@ -12,6 +12,7 @@ export const sidebar = (admin, page = 'overview') => {
   const mainNav = admin
     ? [
         ['layout-grid', 'Overview', 'overview'],
+        ['file-text', 'Applications', 'applications'],
         ['award', 'Scholarships', 'scholarships'],
         ['users', 'Registered Accounts', 'registered-accounts']
       ]

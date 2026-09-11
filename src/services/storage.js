@@ -82,9 +82,26 @@ export const setAccountsCache = accounts => {
   accountsCache = accounts;
 };
 
-export const getScholarshipCatalog = () => scholarshipCatalog;
+export const getScholarshipCatalog = () => {
+  if (scholarshipCatalog.length) return scholarshipCatalog;
+  try {
+    const raw = localStorage.getItem('scholarHubScholarshipsCatalog');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) {
+        scholarshipCatalog = parsed;
+        return scholarshipCatalog;
+      }
+    }
+  } catch {}
+  return scholarshipCatalog;
+};
+
 export const setScholarshipCatalog = catalog => {
-  scholarshipCatalog = catalog;
+  scholarshipCatalog = Array.isArray(catalog) ? catalog : [];
+  try {
+    localStorage.setItem('scholarHubScholarshipsCatalog', JSON.stringify(scholarshipCatalog));
+  } catch {}
 };
 
 const DEFAULT_DEMO_APPLICATIONS = [
@@ -125,12 +142,14 @@ export const getApplicationsCache = () => {
 };
 
 export const setApplicationsCache = cache => {
-  applicationsCache = cache;
+  applicationsCache = Array.isArray(cache) ? cache : [];
+  try {
+    localStorage.setItem('scholarHubApplications', JSON.stringify(applicationsCache));
+  } catch {}
 };
 
 export const saveApplicationsCache = applications => {
-  applicationsCache = applications;
-  localStorage.setItem('scholarHubApplications', JSON.stringify(applications));
+  setApplicationsCache(applications);
 };
 
 export const getRenewalDeadlines = () => {
@@ -520,8 +539,12 @@ export const loadCloudWorkspace = async account => {
     saveHelpRequests(requests);
   }
 
-  if (!scholarshipsResult.error) scholarshipCatalog = scholarshipsResult.data || [];
-  if (!applicationsResult.error) applicationsCache = applicationsResult.data || [];
+  if (!scholarshipsResult.error && scholarshipsResult.data) {
+    setScholarshipCatalog(scholarshipsResult.data);
+  }
+  if (!applicationsResult.error && applicationsResult.data) {
+    setApplicationsCache(applicationsResult.data);
+  }
 
   try {
     const docsQuery = account.role === 'admin'

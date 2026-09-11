@@ -74,6 +74,7 @@ import {
   downloadExcelTemplate
 } from './services/excel.js';
 import { excelImportModalMarkup } from './components/excelModal.js';
+import { uploadRenewalDocument } from './services/documents.js';
 
 export const refresh = () => {
   window.lucide?.createIcons?.();
@@ -1226,20 +1227,159 @@ export const bind = () => {
   });
 
   document.querySelectorAll('.renewal-document-upload').forEach(input => {
-    input.onchange = event => {
+    input.onchange = async event => {
       const file = event.target.files?.[0];
       if (!file) return;
       if (file.size > 2 * 1024 * 1024) return showToast('Please choose a PDF or image smaller than 2 MB.', 'warning');
-      const reader = new FileReader();
-      reader.onload = () => {
+      const user = getCurrentUser();
+      const docId = input.dataset.documentId;
+      const typeMap = {
+        'cog': 'COG',
+        'cor': 'COR',
+        'student-id': 'Student ID',
+        'barangay-clearance': 'Barangay Clearance'
+      };
+      const docType = typeMap[docId] || 'COG';
+
+      try {
+        await uploadRenewalDocument({
+          file,
+          docType,
+          user
+        });
         let documents = {};
         try { documents = JSON.parse(localStorage.getItem(input.dataset.documentKey) || '{}'); } catch { documents = {}; }
-        documents[input.dataset.documentId] = { name: file.name, type: file.type, uploadedAt: new Date().toISOString(), data: reader.result };
+        documents[docId] = { name: file.name, type: file.type, uploadedAt: new Date().toISOString() };
         localStorage.setItem(input.dataset.documentKey, JSON.stringify(documents));
         showToast(`Document "${file.name}" uploaded successfully.`, 'success');
-        studentDashboard();
-      };
-      reader.readAsDataURL(file);
+      } catch (err) {
+        console.warn('Cloud upload error, storing local copy:', err);
+        const reader = new FileReader();
+        reader.onload = () => {
+          let documents = {};
+          try { documents = JSON.parse(localStorage.getItem(input.dataset.documentKey) || '{}'); } catch { documents = {}; }
+          documents[docId] = { name: file.name, type: file.type, uploadedAt: new Date().toISOString(), data: reader.result };
+          localStorage.setItem(input.dataset.documentKey, JSON.stringify(documents));
+          showToast(`Document "${file.name}" saved.`, 'success');
+          studentDashboard();
+        };
+        reader.readAsDataURL(file);
+        return;
+      }
+      studentDashboard();
+    };
+  });
+
+  // Student Support Inquiry Submission
+  document.querySelector('#help-request-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const btn = event.target.querySelector('button[type="submit"]');
+    const category = document.querySelector('#help-category')?.value || 'General Concern';
+    const subject = document.querySelector('#help-subject')?.value.trim();
+    const message = document.querySelector('#help-message')?.value.trim();
+    const user = getCurrentUser();
+    if (!user) return showToast('Please sign in to submit a support ticket.', 'warning');
+    if (!subject || !message) return;
+
+    await withLoading(btn, async () => {
+      try {
+        if (cloudReady() && user.id) {
+          const { error } = await supabase
+            .from('help_requests')
+            .insert({
+              student_id: user.id,
+              subject,
+              message,
+              category,
+              status: 'Pending'
+            });
+          if (error) throw error;
+          await loadCloudWorkspace(user);
+        } else {
+          const requests = getHelpRequests();
+          requests.unshift({
+            id: `ticket-${Date.now()}`,
+            userEmail: user.email,
+            userName: user.name || user.email,
+            category,
+            subject,
+            message,
+            status: 'Pending',
+            createdAt: new Date().toISOString(),
+            thread: [
+              {
+                sender: 'student',
+                senderName: user.name || 'You',
+                text: message,
+                createdAt: new Date().toISOString()
+              }
+            ]
+          });
+          saveHelpRequests(requests);
+        }
+        showToast('Your inquiry ticket has been submitted to scholarship coordinators.', 'success');
+        helpCenterPage();
+      } catch (err) {
+        showToast(`Could not submit ticket: ${err.message}`, 'error');
+      }
+    }, 'Submitting...');
+  });
+
+  // Student Follow-up Reply in Ticket Thread
+  document.querySelectorAll('.student-followup-form').forEach(form => {
+    form.addEventListener('submit', async event => {
+      event.preventDefault();
+      const ticketId = form.dataset.ticketId;
+      const input = form.querySelector('.student-followup-input');
+      const text = input?.value.trim();
+      const user = getCurrentUser();
+      if (!text || !user) return;
+
+      const requests = getHelpRequests();
+      const request = requests.find(item => String(item.id) === String(ticketId));
+      if (!request) return;
+
+      const now = new Date().toISOString();
+      request.thread = Array.isArray(request.thread) && request.thread.length
+        ? request.thread
+        : [
+            ...(request.message ? [{ sender: 'student', senderName: request.userName || 'You', text: request.message, createdAt: request.createdAt }] : []),
+            ...(request.adminReply ? [{ sender: 'admin', senderName: 'Scholarship Office', text: request.adminReply, createdAt: request.repliedAt || request.createdAt }] : [])
+          ];
+
+      request.thread.push({
+        sender: 'student',
+        senderName: user.name || 'You',
+        text,
+        createdAt: now
+      });
+      request.status = 'Pending';
+      saveHelpRequests(requests);
+
+      if (cloudReady()) {
+        try {
+          await supabase
+            .from('help_requests')
+            .update({
+              status: 'Pending',
+              thread: JSON.stringify(request.thread)
+            })
+            .eq('id', Number(ticketId));
+        } catch (e) {
+          console.warn('Could not sync student reply to Supabase:', e);
+        }
+      }
+
+      showToast('Follow-up message sent.', 'success');
+      helpCenterPage();
+    });
+  });
+
+  document.querySelectorAll('[data-focus-ticket-form]').forEach(btn => {
+    btn.onclick = () => {
+      const subjectInput = document.querySelector('#help-subject');
+      subjectInput?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      subjectInput?.focus();
     };
   });
 
