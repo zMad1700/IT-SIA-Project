@@ -14,6 +14,11 @@ const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 const supabase = supabaseUrl && supabaseKey ? window.supabase?.createClient(supabaseUrl, supabaseKey) : null;
 let accountsCache = [];
+let scholarshipCatalog = [];
+let applicationsCache = [];
+// Browser storage remains an offline/demo fallback. Shared operational data is
+// hydrated from Supabase whenever cloud configuration is available.
+const cloudReady = () => Boolean(supabase && getCurrentUser()?.id);
 const getAccounts = () => {
   if (accountsCache.length) return accountsCache;
   try {
@@ -44,11 +49,6 @@ const accountFromProfile = profile => ({
 const saveAccounts = accounts => {
   accountsCache = accounts;
   localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
-  if (!supabase) return;
-  const profiles = accounts.filter(account => account.id).map(profileFields);
-  if (profiles.length) supabase.from('profiles').upsert(profiles, { onConflict: 'id' }).then(({ error }) => {
-    if (error) console.error('Could not sync profiles:', error.message);
-  });
 };
 const getCurrentUser = () => { 
   try {
@@ -59,7 +59,7 @@ const getCurrentUser = () => {
 };
 const isAdminSession = () => {
   const user = getCurrentUser();
-  return user?.role === 'admin' && user.email === ADMIN.email;
+  return user?.role === 'admin';
 };
 const userAvatar = (user, className = 'avatar') => `<div class="${className}">${user?.photo ? `<img src="${escapeHtml(user.photo)}" alt="${escapeHtml(user.name)}'s profile photo">` : icon('user-round', className === 'editable-avatar' ? 30 : 18)}</div>`;
 const updateCurrentUser = changes => {
@@ -67,6 +67,11 @@ const updateCurrentUser = changes => {
   const user = { ...previousUser, ...changes };
   localStorage.setItem('scholarHubCurrentUser', JSON.stringify(user));
   if (user.email !== ADMIN.email) saveAccounts(getAccounts().map(account => account.email === previousUser.email ? { ...account, ...changes } : account));
+  if (supabase && user.id) {
+    supabase.from('profiles').update(profileFields(user)).eq('id', user.id).then(({ error }) => {
+      if (error) console.error('Could not sync profile:', error.message);
+    });
+  }
   return user;
 };
 const loadCloudSession = async () => {
@@ -129,6 +134,44 @@ const getHelpRequests = () => {
   catch { return []; }
 };
 const saveHelpRequests = requests => localStorage.setItem('scholarHubHelpRequests', JSON.stringify(requests));
+const loadCloudWorkspace = async account => {
+  if (!supabase || !account?.id) return;
+  const [announcementsResult, reactionsResult, schedulesResult, helpResult, scholarshipsResult, applicationsResult] = await Promise.all([
+    supabase.from('announcements').select('*').order('created_at', { ascending: true }),
+    supabase.from('announcement_reactions').select('*'),
+    supabase.from('renewal_schedules').select('*'),
+    supabase.from('help_requests').select('*, profiles!help_requests_student_id_fkey(name,email)').order('created_at', { ascending: true }),
+    supabase.from('scholarships').select('*').order('deadline', { ascending: true }),
+    supabase.from('applications').select('*').order('created_at', { ascending: false })
+  ]);
+  if (!announcementsResult.error && !reactionsResult.error) {
+    const posts = (announcementsResult.data || []).map(post => {
+      const reactions = (reactionsResult.data || []).filter(reaction => reaction.announcement_id === post.id);
+      return {
+        id: String(post.id), message: post.message, createdAt: post.created_at,
+        reactions: { like: reactions.filter(item => item.reaction === 'like').map(item => item.user_id), heart: reactions.filter(item => item.reaction === 'heart').map(item => item.user_id) }
+      };
+    });
+    localStorage.setItem('scholarHubAnnouncements', JSON.stringify(posts));
+  }
+  if (!schedulesResult.error) {
+    const deadlines = {}, schedules = {};
+    (schedulesResult.data || []).forEach(item => {
+      if (item.deadline_at) deadlines[item.school_name] = item.deadline_at;
+      if (item.schedule_at) schedules[item.school_name] = item.schedule_at;
+    });
+    saveRenewalDeadlines(deadlines); saveRenewalSchedules(schedules);
+  }
+  if (!helpResult.error) {
+    const requests = (helpResult.data || []).map(item => ({
+      id: String(item.id), userEmail: item.profiles?.email || '', userName: item.profiles?.name || item.profiles?.email || 'Student',
+      subject: item.subject, message: item.message, status: item.status, createdAt: item.created_at
+    }));
+    saveHelpRequests(requests);
+  }
+  if (!scholarshipsResult.error) scholarshipCatalog = scholarshipsResult.data || [];
+  if (!applicationsResult.error) applicationsCache = applicationsResult.data || [];
+};
 const getScholarsByType = type => getAccounts().filter(account => account.role === 'user' && account.scholarType === type);
 const getTotalScholars = () => getScholarsByType('Old scholar').length + getScholarsByType('New scholar').length;
 const accountYearLevel = account => account.yearLevel || account.year || account.year_level || account.yearlevel || '';
@@ -156,14 +199,15 @@ const navigateTo = (route, replace = false) => {
 };
 const postTime = date => new Date(date).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 const registrationDate = date => new Date(date).toLocaleDateString(undefined, { dateStyle: 'long' });
+const reactionIdentity = user => user?.id || user?.email;
 const announcementFeed = (student = false) => {
   const user = getCurrentUser();
   const posts = getAnnouncements().slice().reverse();
   if (!posts.length) return `<div class="empty-posts">${icon('megaphone',18)} No announcements yet.</div>`;
   return posts.map(post => {
     const reactions = post.reactions || { like: [], heart: [] };
-    const liked = reactions.like.includes(user?.email);
-    const hearted = reactions.heart.includes(user?.email);
+    const liked = reactions.like.includes(reactionIdentity(user));
+    const hearted = reactions.heart.includes(reactionIdentity(user));
     return `<article class="${student ? 'student-post' : 'admin-post'}"><div class="post-avatar">PA</div><div class="post-body"><strong>Administrator</strong><small>${postTime(post.createdAt)}</small><p>${escapeHtml(post.message)}</p>${student ? `<div class="post-reactions"><button class="post-reaction ${liked ? 'selected' : ''}" data-react="like" data-post-id="${escapeHtml(post.id)}">${icon('thumbs-up',14)} Like <b>${reactions.like.length}</b></button><button class="post-reaction heart ${hearted ? 'selected' : ''}" data-react="heart" data-post-id="${escapeHtml(post.id)}">${icon('heart',14)} Heart <b>${reactions.heart.length}</b></button></div>` : ''}</div></article>`;
   }).join('');
 };
@@ -231,8 +275,8 @@ function registerForm() { return `<form class="auth-form" id="register-form">
 </form>`; }
 function forgotForm() { return `<div class="auth-form"><div class="auth-message error">${icon('circle-alert',16)} Password-reset email is not configured in this local demo. Please contact the administrator or create a new account.</div><p class="form-foot"><button type="button" data-view="login">${icon('arrow-left',15)} Back to sign in</button></p></div>`; }
 
-function sidebar(admin, page = 'overview') { const menu = admin ? [['layout-dashboard','Overview'],['users-round','Registered Accounts']] : [['layout-dashboard','Overview'],['user-round','My Profile']]; return `<aside class="sidebar"><div class="side-brand">${icon('graduation-cap',25)} <span>Scholar<span>Hub</span></span></div><div class="side-label">${admin ? 'ADMINISTRATION' : 'STUDENT'}</div><nav>${menu.map(m=>`<button class="nav-item ${m[1].toLowerCase().replace(' ','-') === page?'active':''}" data-page="${m[1].toLowerCase().replace(' ','-')}">${icon(m[0])}<span>${m[1]}</span></button>`).join('')}</nav><div class="side-bottom">${admin ? '' : `<button class="nav-item ${page === 'help-center' ? 'active' : ''}" data-page="help-center">${icon('circle-help')}<span>Help Center</span></button>`}<button class="nav-item logout">${icon('log-out')}<span>Sign out</span></button></div></aside>`; }
-function topbar(admin) { const user = admin ? { name: 'Administrator' } : getCurrentUser(); const section = currentRoute === 'my-profile' ? 'My profile' : currentRoute === 'help-center' ? 'Help Center' : currentRoute === 'help-requests' ? 'Pending review' : currentRoute === 'registered-accounts' ? 'Registered accounts' : currentRoute === 'scholars' ? 'New scholars' : currentRoute === 'active-scholars' ? 'Active scholars' : 'Overview'; return `<header class="topbar"><button class="hamburger" aria-label="Open menu">${icon('menu')}</button><div class="crumb">${admin ? 'Administration' : 'My workspace'} <span>/</span> ${section}</div><div class="top-actions"><button class="round theme-toggle" aria-label="Toggle dark mode">${icon('moon',18)}</button><div class="user-chip ${admin ? '' : 'open-profile'}" ${admin ? '' : 'role="button" tabindex="0"'}>${userAvatar(user)}<div><strong>${displayName(user)}</strong><small>${admin ? 'Administrator' : escapeHtml(user?.course || 'Student account')}</small></div>${icon('chevron-down',15)}</div></div></header>`; }
+function sidebar(admin, page = 'overview') { const menu = admin ? [['layout-dashboard','Overview'],['book-open','Scholarships'],['users-round','Registered Accounts']] : [['layout-dashboard','Overview'],['book-open','Scholarships'],['user-round','My Profile']]; return `<aside class="sidebar"><div class="side-brand">${icon('graduation-cap',25)} <span>Scholar<span>Hub</span></span></div><div class="side-label">${admin ? 'ADMINISTRATION' : 'STUDENT'}</div><nav>${menu.map(m=>`<button class="nav-item ${m[1].toLowerCase().replace(' ','-') === page?'active':''}" data-page="${m[1].toLowerCase().replace(' ','-')}">${icon(m[0])}<span>${m[1]}</span></button>`).join('')}</nav><div class="side-bottom">${admin ? '' : `<button class="nav-item ${page === 'help-center' ? 'active' : ''}" data-page="help-center">${icon('circle-help')}<span>Help Center</span></button>`}<button class="nav-item logout">${icon('log-out')}<span>Sign out</span></button></div></aside>`; }
+function topbar(admin) { const user = admin ? { name: 'Administrator' } : getCurrentUser(); const section = currentRoute === 'my-profile' ? 'My profile' : currentRoute === 'help-center' ? 'Help Center' : currentRoute === 'help-requests' ? 'Pending review' : currentRoute === 'registered-accounts' ? 'Registered accounts' : currentRoute === 'scholarships' ? 'Scholarships' : currentRoute === 'scholars' ? 'New scholars' : currentRoute === 'active-scholars' ? 'Active scholars' : 'Overview'; return `<header class="topbar"><button class="hamburger" aria-label="Open menu">${icon('menu')}</button><div class="crumb">${admin ? 'Administration' : 'My workspace'} <span>/</span> ${section}</div><div class="top-actions"><button class="round theme-toggle" aria-label="Toggle dark mode">${icon('moon',18)}</button><div class="user-chip ${admin ? '' : 'open-profile'}" ${admin ? '' : 'role="button" tabindex="0"'}>${userAvatar(user)}<div><strong>${displayName(user)}</strong><small>${admin ? 'Administrator' : escapeHtml(user?.course || 'Student account')}</small></div>${icon('chevron-down',15)}</div></div></header>`; }
 function stat(label,value,trend,iconName,color,detail) { const clickable = detail !== 'applicants'; const tag = clickable ? 'button' : 'article'; return `<${tag} class="stat-card ${clickable ? 'stat-link' : 'total-card'}" ${clickable ? `data-admin-detail="${detail}" aria-label="View ${label}"` : ''}><div><p>${label}</p><h3>${value}</h3><small class="${trend[0]==='+'?'up':'warm'}">${trend} <span>vs. last month</span></small></div><div class="stat-icon ${color}">${icon(iconName,21)}</div>${clickable ? `<span class="stat-arrow">${icon('arrow-up-right',16)}</span>` : ''}</${tag}>`; }
 function studentDashboard() { currentRoute = 'overview'; const user = getCurrentUser() || {}; const firstName = escapeHtml((user.name || 'Student').split(' ')[0]); const completion = profileCompletion(user); const renewalReminder = studentRenewalMarkup(user); const renewalSchedule = studentRenewalScheduleMarkup(user); app.innerHTML=`<div class="portal"><div class="sidebar-backdrop"></div>${sidebar(false)}<div class="main">${topbar(false)}<main class="content"><section class="welcome"><div><p class="eyebrow">YOUR SCHOLARSHIP DASHBOARD</p><h1>${timeGreeting()}, ${firstName} <span>👋</span></h1></div></section><section class="student-grid ${renewalReminder ? '' : 'single-card'}"><div class="progress-card"><div class="section-title"><div><p>PROFILE COMPLETENESS</p><h2>Complete your profile</h2></div><strong>${completion}%</strong></div><div class="progress"><i style="width:${completion}%"></i></div><p>Complete your personal and academic details to keep your scholarship record up to date.</p><button class="text-btn" data-page="my-profile">Complete profile ${icon('arrow-right',16)}</button></div>${renewalReminder}</section>${renewalSchedule}</main></div></div>`; refresh(); }
 function profilePage() { currentRoute = 'my-profile'; const user = getCurrentUser() || {}; const isLegacySocialAccount = Boolean(user.provider && !user.password); app.innerHTML = `<div class="portal"><div class="sidebar-backdrop"></div>${sidebar(false, 'my-profile')}<div class="main">${topbar(false)}<main class="content profile-page"><button class="back-btn" data-page="overview">${icon('arrow-left',17)} Back to dashboard</button><section class="welcome detail-heading"><div><p class="eyebrow">ACCOUNT SETTINGS</p><h1>My profile</h1><p>Update the information shown on your ScholarshipHub account.</p></div></section><div class="profile-page-grid"><section class="profile-editor-card"><h2>Personal information</h2><form id="profile-form"><div class="avatar-editor">${userAvatar(user, 'editable-avatar')}<div><label class="upload-photo" for="profile-photo">${icon('camera',16)} Choose profile picture</label><input id="profile-photo" type="file" accept="image/*"><small>JPG, PNG, or WebP. Your picture stays on this device.</small></div></div><label>Full name<input id="profile-name" value="${escapeHtml(user.name)}" required></label><label>Mobile number<input id="profile-phone" type="tel" value="${escapeHtml(user.phone)}" placeholder="09XX XXX XXXX"></label><label>Email address<input value="${escapeHtml(user.email)}" disabled></label><label>Bio<textarea id="profile-bio" maxlength="300" placeholder="Tell us a little about yourself…">${escapeHtml(user.bio)}</textarea></label><button class="primary-btn" type="submit">Save profile ${icon('save',17)}</button></form></section><section class="profile-settings-card"><h2>Security</h2><p>${isLegacySocialAccount ? 'Set a password now to migrate this legacy demo social account.' : 'Use a strong new password to keep your account secure.'}</p><form id="password-form">${isLegacySocialAccount ? '' : '<label>Current password<input id="current-password" type="password" required></label>'}<label>New password<input id="new-password" type="password" minlength="6" required></label><label>Confirm new password<input id="confirm-password" type="password" minlength="6" required></label><button class="secondary-btn" type="submit">${icon('key-round',16)} ${isLegacySocialAccount ? 'Set password' : 'Change password'}</button></form></section></div></main></div></div>`; refresh(); }
@@ -328,6 +372,7 @@ function adminDetail(type) {
 }
 
 function openAddScholarModal() {
+  if (supabase) return alert('For the cloud system, students must create their own account so their Auth account and profile are correctly linked. They will then appear in Registered Accounts.');
   document.body.insertAdjacentHTML('beforeend', `<div class="modal-backdrop" id="add-scholar-modal"><section class="scholarship-modal" role="dialog" aria-modal="true" aria-labelledby="add-scholar-title"><button class="modal-close" type="button" aria-label="Close">${icon('x',19)}</button><h2 id="add-scholar-title">Add scholar</h2><p>Add a returning scholar to the active-scholar list.</p><form id="add-scholar-form"><div class="two-fields"><label>Last name<input id="add-last-name" required></label><label>First name<input id="add-first-name" required></label></div><label>Middle name<input id="add-middle-name"></label><div class="two-fields"><label>School<select id="add-school" required><option value="" disabled selected>Select school</option>${schools.map(school => `<option>${school}</option>`).join('')}</select></label><label>Year<select id="add-year" required><option value="" disabled selected>Select year</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select></label></div><label>Course<input id="add-course" placeholder="e.g., BS Information Technology" required></label><div class="modal-actions"><button class="secondary-btn modal-cancel" type="button">Cancel</button><button class="primary-btn compact" type="submit">${icon('user-plus',16)} Add scholar</button></div></form></section></div>`);
   window.lucide?.createIcons?.();
   const modal = document.querySelector('#add-scholar-modal');
@@ -390,6 +435,7 @@ function bind(){
     if (button.dataset.page === 'my-profile' && !isAdminSession()) navigateTo('my-profile');
     if (button.dataset.page === 'help-center' && !isAdminSession()) navigateTo('help-center');
     if (button.dataset.page === 'registered-accounts' && isAdminSession()) navigateTo('registered-accounts');
+    if (button.dataset.page === 'scholarships') navigateTo('scholarships');
     if (button.dataset.page === 'overview') navigateTo('overview');
   });
   document.querySelectorAll('.open-profile').forEach(chip => {
@@ -533,6 +579,15 @@ function bind(){
     const subject = document.querySelector('#help-subject').value.trim();
     const message = document.querySelector('#help-message').value.trim();
     if (!user?.email || !subject || !message) return;
+    if (cloudReady()) {
+      supabase.from('help_requests').insert({ student_id: user.id, subject, message }).then(async ({ error }) => {
+        if (error) return alert(`Could not send your request: ${error.message}`);
+        await loadCloudWorkspace(user);
+        alert('Your help request has been sent to the administrator.');
+        navigateTo('overview', true);
+      });
+      return;
+    }
     const requests = getHelpRequests();
     requests.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, userEmail: user.email, userName: user.name || user.email, subject, message, createdAt: new Date().toISOString(), status: 'Pending' });
     saveHelpRequests(requests);
@@ -544,6 +599,14 @@ function bind(){
     const field = document.querySelector('#announcement-message');
     const message = field.value.trim();
     if (!message) return;
+    const user = getCurrentUser();
+    if (cloudReady()) {
+      supabase.from('announcements').insert({ author_id: user.id, message }).then(async ({ error }) => {
+        if (error) return alert(`Could not post announcement: ${error.message}`);
+        await loadCloudWorkspace(user); adminDashboard();
+      });
+      return;
+    }
     const posts = getAnnouncements();
     posts.push({ id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message, createdAt: new Date().toISOString(), reactions: { like: [], heart: [] } });
     saveAnnouncements(posts);
@@ -551,7 +614,7 @@ function bind(){
   });
   document.querySelectorAll('[data-react]').forEach(button => button.onclick = () => {
     const user = getCurrentUser();
-    if (!user?.email) return;
+    if (!reactionIdentity(user)) return;
     const posts = getAnnouncements();
     const post = posts.find(item => item.id === button.dataset.postId);
     if (!post) return;
@@ -559,10 +622,21 @@ function bind(){
     post.reactions.like ||= [];
     post.reactions.heart ||= [];
     const reaction = button.dataset.react;
-    const selected = post.reactions[reaction].includes(user.email);
-    post.reactions.like = post.reactions.like.filter(email => email !== user.email);
-    post.reactions.heart = post.reactions.heart.filter(email => email !== user.email);
-    if (!selected) post.reactions[reaction].push(user.email);
+    const identity = reactionIdentity(user);
+    const selected = post.reactions[reaction].includes(identity);
+    if (cloudReady()) {
+      const request = selected
+        ? supabase.from('announcement_reactions').delete().eq('announcement_id', Number(post.id)).eq('user_id', user.id)
+        : supabase.from('announcement_reactions').upsert({ announcement_id: Number(post.id), user_id: user.id, reaction }, { onConflict: 'announcement_id,user_id' });
+      request.then(async ({ error }) => {
+        if (error) return alert(`Could not save reaction: ${error.message}`);
+        await loadCloudWorkspace(user); studentDashboard();
+      });
+      return;
+    }
+    post.reactions.like = post.reactions.like.filter(item => item !== identity);
+    post.reactions.heart = post.reactions.heart.filter(item => item !== identity);
+    if (!selected) post.reactions[reaction].push(identity);
     saveAnnouncements(posts);
     studentDashboard();
   });
@@ -572,11 +646,47 @@ function bind(){
   document.querySelectorAll('[data-open-help-requests]').forEach(button => button.onclick = () => navigateTo('help-requests'));
   document.querySelectorAll('[data-back-dashboard]').forEach(x=>x.onclick=()=>navigateTo('overview'));
   document.querySelectorAll('[data-add-scholar]').forEach(button => button.onclick = openAddScholarModal);
+  document.querySelectorAll('[data-apply-scholarship]').forEach(button => button.onclick = async () => {
+    const user = getCurrentUser();
+    if (!cloudReady()) return alert('Applications require Supabase configuration. Add your Supabase values to .env first.');
+    const scholarshipId = Number(button.dataset.applyScholarship);
+    button.disabled = true;
+    const { data: application, error } = await supabase.from('applications').insert({ student_id: user.id, scholarship_id: scholarshipId, status: 'Submitted', submitted_at: new Date().toISOString() }).select().single();
+    if (error) { button.disabled = false; return alert(`Could not submit application: ${error.message}`); }
+    const { data: requirements, error: requirementsError } = await supabase.from('requirements').select('id').eq('scholarship_id', scholarshipId);
+    if (!requirementsError && requirements?.length) await supabase.from('application_requirements').insert(requirements.map(requirement => ({ application_id: application.id, requirement_id: requirement.id })));
+    await loadCloudWorkspace(user);
+    alert('Your scholarship application has been submitted.');
+    scholarshipsPage();
+  });
+  document.querySelector('#scholarship-form')?.addEventListener('submit', async event => {
+    event.preventDefault();
+    const user = getCurrentUser();
+    if (!cloudReady()) return alert('Scholarship management requires Supabase configuration.');
+    const { error } = await supabase.from('scholarships').insert({
+      title: document.querySelector('#scholarship-title').value.trim(),
+      category: document.querySelector('#scholarship-category').value.trim() || null,
+      description: document.querySelector('#scholarship-description').value.trim() || null,
+      amount: Number(document.querySelector('#scholarship-amount').value) || null,
+      deadline: document.querySelector('#scholarship-deadline').value || null,
+      created_by: user.id, status: 'Open'
+    });
+    if (error) return alert(`Could not create scholarship: ${error.message}`);
+    await loadCloudWorkspace(user); adminScholarshipsPage();
+  });
   document.querySelector('#renewal-deadline-form')?.addEventListener('submit', event => {
     event.preventDefault();
     const school = document.querySelector('#renewal-school').value;
     const deadline = document.querySelector('#renewal-deadline').value;
     if (!school || !deadline) return;
+    const user = getCurrentUser();
+    if (cloudReady()) {
+      supabase.from('renewal_schedules').upsert({ school_name: school, deadline_at: deadline, schedule_at: getRenewalSchedules()[school] || null, updated_by: user.id }, { onConflict: 'school_name' }).then(async ({ error }) => {
+        if (error) return alert(`Could not save reminder: ${error.message}`);
+        await loadCloudWorkspace(user); adminDashboard();
+      });
+      return;
+    }
     saveRenewalDeadlines({ ...getRenewalDeadlines(), [school]: deadline });
     alert(`Renewal reminder saved for ${school}. Only students from this school will see it.`);
     adminDashboard();
@@ -586,6 +696,14 @@ function bind(){
     const school = document.querySelector('#renewal-schedule-school').value;
     const schedule = document.querySelector('#renewal-schedule-date').value;
     if (!school || !schedule) return;
+    const user = getCurrentUser();
+    if (cloudReady()) {
+      supabase.from('renewal_schedules').upsert({ school_name: school, deadline_at: getRenewalDeadlines()[school] || null, schedule_at: schedule, updated_by: user.id }, { onConflict: 'school_name' }).then(async ({ error }) => {
+        if (error) return alert(`Could not save schedule: ${error.message}`);
+        await loadCloudWorkspace(user); adminDashboard();
+      });
+      return;
+    }
     saveRenewalSchedules({ ...getRenewalSchedules(), [school]: schedule });
     alert(`Renewal schedule saved for ${school}. Students from this school will see it on their dashboard.`);
     adminDashboard();
@@ -593,6 +711,17 @@ function bind(){
   document.querySelectorAll('.clear-renewal-schedule').forEach(button => button.onclick = () => {
     const school = button.dataset.school;
     if (!confirm(`Clear the renewal schedule for ${school}?`)) return;
+    const user = getCurrentUser();
+    if (cloudReady()) {
+      const request = getRenewalDeadlines()[school]
+        ? supabase.from('renewal_schedules').update({ schedule_at: null }).eq('school_name', school)
+        : supabase.from('renewal_schedules').delete().eq('school_name', school);
+      request.then(async ({ error }) => {
+        if (error) return alert(`Could not clear schedule: ${error.message}`);
+        await loadCloudWorkspace(user); adminDashboard();
+      });
+      return;
+    }
     const schedules = getRenewalSchedules();
     delete schedules[school];
     saveRenewalSchedules(schedules);
@@ -610,6 +739,15 @@ function bind(){
     const row = select.closest('.student-record-row');
     const email = row?.dataset.accountEmail;
     if (!email) return;
+    const account = getAccounts().find(item => item.email === email);
+    if (cloudReady() && account?.id) {
+      supabase.from('profiles').update({
+        requirements_status: row.querySelector('.requirement-select')?.value || 'Complete',
+        scholar_status: row.querySelector('.status-select')?.value || 'Active'
+      }).eq('id', account.id).then(({ error }) => {
+        if (error) alert(`Could not update scholar record: ${error.message}`);
+      });
+    }
     saveAccounts(getAccounts().map(account => account.email === email ? {
       ...account,
       requirementsStatus: row.querySelector('.requirement-select')?.value || 'Complete',
@@ -621,6 +759,11 @@ function bind(){
     const requests = getHelpRequests();
     const request = requests.find(item => item.id === row.dataset.helpRequestId);
     if (!request) return;
+    if (cloudReady()) {
+      supabase.from('help_requests').update({ status: select.value, resolved_by: select.value === 'Resolved' ? getCurrentUser().id : null, resolved_at: select.value === 'Resolved' ? new Date().toISOString() : null }).eq('id', Number(request.id)).then(({ error }) => {
+        if (error) alert(`Could not update help request: ${error.message}`);
+      });
+    }
     request.status = select.value;
     saveHelpRequests(requests);
     select.classList.toggle('lacking', select.value === 'Pending');
@@ -630,6 +773,15 @@ function bind(){
     const row = button.closest('.student-record-row');
     const email = row.dataset.accountEmail;
     if (!confirm(`Delete ${row.children[1]?.textContent.trim() || 'this'} scholar record? This cannot be undone.`)) return;
+    const account = getAccounts().find(item => item.email === email);
+    if (cloudReady() && account?.id) {
+      supabase.from('profiles').update({ scholar_status: 'Non-active' }).eq('id', account.id).then(({ error }) => {
+        if (error) return alert(`Could not deactivate scholar: ${error.message}`);
+        alert('Cloud scholar accounts are deactivated rather than deleted to preserve their account and audit data.');
+        navigateTo('overview', true);
+      });
+      return;
+    }
     if (email) saveAccounts(getAccounts().filter(account => account.email !== email));
     row.style.opacity = '0';
     setTimeout(() => row.remove(), 160);
@@ -668,10 +820,10 @@ function bind(){
       role: 'user', registeredAt: new Date().toISOString()
     };
     if (supabase) {
-      const { error } = await supabase.auth.signUp({ email, password: account.password, options: { data: profileFields(account) } });
+      const { data, error } = await supabase.auth.signUp({ email, password: account.password, options: { data: profileFields(account) } });
       if (error) return showAuthMessage(error.message);
       authMessage = '';
-      showAuthMessage('Account created successfully. You can now sign in.', 'success');
+      showAuthMessage(data.session ? 'Account created successfully. You can now sign in.' : 'Account created. Please check your email and confirm your account before signing in.', 'success');
       return authView('login');
     }
     const accounts = getAccounts();
@@ -683,6 +835,19 @@ function bind(){
 function helpCenterPage() {
   currentRoute = 'help-center';
   app.innerHTML = `<div class="portal"><div class="sidebar-backdrop"></div>${sidebar(false, 'help-center')}<div class="main">${topbar(false)}<main class="content profile-page"><button class="back-btn" data-page="overview">${icon('arrow-left',17)} Back to dashboard</button><section class="welcome detail-heading"><div><p class="eyebrow">STUDENT SUPPORT</p><h1>Help Center</h1><p>Send your concern to the administrator. Your request will be reviewed by the admin.</p></div></section><section class="profile-editor-card"><h2>Submit a help request</h2><form id="help-request-form"><label>Subject<input id="help-subject" maxlength="100" placeholder="What do you need help with?" required></label><label>Message<textarea id="help-message" maxlength="1000" placeholder="Describe your concern or question…" required></textarea></label><button class="primary-btn" type="submit">${icon('send',17)} Send request</button></form></section></main></div></div>`;
+  refresh();
+}
+function scholarshipsPage() {
+  currentRoute = 'scholarships';
+  const user = getCurrentUser();
+  const programs = scholarshipCatalog.length ? scholarshipCatalog : scholarships.map((item, index) => ({ id: `demo-${index}`, title: item[0], category: item[1], deadline: item[2], amount: Number(String(item[3]).replace(/[^0-9.]/g, '')), status: 'Open' }));
+  const applications = applicationsCache.filter(application => application.student_id === user?.id);
+  app.innerHTML = `<div class="portal"><div class="sidebar-backdrop"></div>${sidebar(false, 'scholarships')}<div class="main">${topbar(false)}<main class="content"><section class="welcome detail-heading"><div><p class="eyebrow">SCHOLARSHIP PROGRAMS</p><h1>Explore scholarships</h1><p>Apply to an open program and track the status of your submission.</p></div></section><section class="scholarship-list">${programs.length ? programs.map(program => { const application = applications.find(item => String(item.scholarship_id) === String(program.id)); const closed = program.status && program.status !== 'Open'; return `<article class="profile-editor-card"><p class="eyebrow">${escapeHtml(program.category || 'Scholarship')}</p><h2>${escapeHtml(program.title)}</h2><p>${escapeHtml(program.description || 'No description has been added yet.')}</p><div class="detail-info"><span>${icon('calendar-days',15)} <b>Deadline:</b> ${program.deadline ? escapeHtml(formatSchedule(program.deadline)) : 'Not set'}</span><span>${icon('wallet',15)} <b>Amount:</b> ${program.amount ? `₱${Number(program.amount).toLocaleString()}` : 'Not specified'}</span></div>${application ? `<span class="account-type ${application.status === 'Approved' ? 'new-scholar' : 'old-scholar'}">Application: ${escapeHtml(application.status)}</span>` : `<button class="primary-btn compact" data-apply-scholarship="${escapeHtml(program.id)}" ${closed ? 'disabled' : ''}>${closed ? 'Not available' : `${icon('send',16)} Apply now`}</button>`}</article>`; }).join('') : `<div class="search-empty">${icon('book-open',20)}<strong>No scholarship programs are available yet.</strong></div>`}</section></main></div></div>`;
+  refresh();
+}
+function adminScholarshipsPage() {
+  currentRoute = 'scholarships';
+  app.innerHTML = `<div class="portal admin"><div class="sidebar-backdrop"></div>${sidebar(true, 'scholarships')}<div class="main">${topbar(true)}<main class="content"><section class="welcome detail-heading"><div><p class="eyebrow">ADMINISTRATION</p><h1>Scholarship programs</h1><p>Create programs that students can view and apply for.</p></div></section><section class="profile-editor-card"><h2>Create scholarship</h2><form id="scholarship-form"><div class="two-fields"><label>Title<input id="scholarship-title" required></label><label>Category<input id="scholarship-category" placeholder="e.g., Merit-based"></label></div><label>Description<textarea id="scholarship-description" maxlength="1000"></textarea></label><div class="two-fields"><label>Amount (PHP)<input id="scholarship-amount" type="number" min="0" step="0.01"></label><label>Deadline<input id="scholarship-deadline" type="datetime-local"></label></div><button class="primary-btn" type="submit">${icon('plus',17)} Create scholarship</button></form></section><section class="registered-board"><h2>Existing programs</h2><div class="detail-table"><div class="detail-head"><span>TITLE</span><span>CATEGORY</span><span>DEADLINE</span><span>STATUS</span></div>${scholarshipCatalog.length ? scholarshipCatalog.map(item => `<div class="detail-row"><strong>${escapeHtml(item.title)}</strong><span>${escapeHtml(item.category || '—')}</span><small>${item.deadline ? escapeHtml(formatSchedule(item.deadline)) : 'Not set'}</small><span>${escapeHtml(item.status)}</span></div>`).join('') : `<div class="search-empty">${icon('book-open',20)}<strong>No scholarship programs yet.</strong></div>`}</div></section></main></div></div>`;
   refresh();
 }
 function needsReviewMarkup() {
@@ -755,7 +920,9 @@ async function renderRoute(route = 'overview') {
     return authView('login');
   }
   localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  await loadCloudWorkspace(account);
   if (account.role === 'admin') {
+    if (route === 'scholarships') return adminScholarshipsPage();
     if (route === 'active-scholars') return adminDetail('scholarships');
     if (route === 'scholars') return adminDetail('scholars');
     if (route === 'help-requests') return adminHelpRequestsPage();
@@ -763,6 +930,7 @@ async function renderRoute(route = 'overview') {
     return adminDashboard();
   }
   if (route === 'my-profile') return profilePage();
+  if (route === 'scholarships') return scholarshipsPage();
   if (route === 'help-center') return helpCenterPage();
   return studentDashboard();
 }
