@@ -1374,36 +1374,66 @@ body.dark .theme-icon-moon {
 /* Table Actions & Selects */
 .record-select {
   appearance: none;
+  -webkit-appearance: none;
   border: 1px solid transparent;
   border-radius: var(--radius-pill);
-  padding: 5px 22px 5px 10px;
+  padding: 6px 26px 6px 12px;
   font-size: 11.5px;
   font-weight: 700;
   outline: 0;
   cursor: pointer;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 8px center;
+  transition: all 0.15s ease;
 }
 
-.requirement-select.complete {
+/* Light theme select status colors */
+.requirement-select.complete,
+.status-select.active,
+.help-status-select.complete {
   background-color: var(--emerald-light);
-  color: var(--emerald);
+  color: #047857;
+  border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
-.requirement-select.lacking {
+.requirement-select.lacking,
+.help-status-select.lacking {
   background-color: var(--amber-light);
   color: #b45309;
-}
-
-.status-select.active {
-  background-color: var(--emerald-light);
-  color: var(--emerald);
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
 .status-select.non-active {
   background-color: var(--rose-light);
   color: #b91c1c;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* Dark theme select status colors */
+body.dark .record-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+body.dark .requirement-select.complete,
+body.dark .status-select.active,
+body.dark .help-status-select.complete {
+  background-color: rgba(16, 185, 129, 0.16);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+body.dark .requirement-select.lacking,
+body.dark .help-status-select.lacking {
+  background-color: rgba(245, 158, 11, 0.16);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+body.dark .status-select.non-active {
+  background-color: rgba(239, 68, 68, 0.16);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.35);
 }
 
 .status-actions-cell {
@@ -2644,8 +2674,16 @@ body.dark .pill-textarea {
   border-color: #1e293b;
 }
 
-body.dark .pill-select option {
-  background: #131b2e;
+body.dark select,
+body.dark .record-select,
+body.dark .pill-select {
+  color-scheme: dark;
+}
+
+body.dark select option,
+body.dark .pill-select option,
+body.dark .record-select option {
+  background-color: #131b2e;
   color: #f8fafc;
 }
 
