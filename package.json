@@ -6,5 +6,8 @@
     "start": "vite --port 8080",
     "build": "vite build"
   },
-  "devDependencies": { "vite": "^6.0.0" }
+  "devDependencies": { "vite": "^6.0.0" },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
 }

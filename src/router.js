@@ -38,25 +38,36 @@ export const navigateTo = (route, replace = false) => {
 
 export const renderRoute = async (route = 'overview') => {
   const session = getCurrentUser();
-  const account = supabase
-    ? await loadCloudSession()
-    : session?.email === ADMIN.email && session?.role === 'admin'
-      ? ADMIN
-      : getAccounts().find(item => item.email === session?.email);
+  let account = null;
+  if (supabase) {
+    account = await loadCloudSession();
+  }
+  if (!account && session) {
+    account =
+      session?.email === ADMIN.email && session?.role === 'admin'
+        ? ADMIN
+        : getAccounts().find(item => item.email === session?.email) || session;
+  }
 
   if (!account) {
     localStorage.removeItem('scholarHubCurrentUser');
+    sessionStorage.removeItem('scholarHubCurrentUser');
     return authView('login');
   }
 
-  localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  if (sessionStorage.getItem('scholarHubCurrentUser')) {
+    sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  } else {
+    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+  }
   await loadCloudWorkspace(account);
 
   if (account.role === 'admin') {
     if (route === 'scholarships') return adminScholarshipsPage();
     if (route === 'active-scholars') return adminDetail('scholarships');
     if (route === 'scholars') return adminDetail('scholars');
-    if (route === 'help-requests') return adminHelpRequestsPage();
+    if (route === 'total-scholars' || route === 'applicants') return adminDetail('applicants');
+    if (route === 'help-requests' || route === 'pending-review') return adminHelpRequestsPage();
     if (route === 'applications') return adminApplicationsPage();
     if (route === 'registered-accounts') return registeredAccountsPage();
     if (route === 'notifications') return notificationsPage();

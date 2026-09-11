@@ -117,26 +117,32 @@ export const updateCurrentUser = changes => {
 };
 
 export const loadCloudSession = async (remember = true) => {
-  if (!supabase) return getCurrentUser();
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session) return null;
-  const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
-  if (error || !profile) return null;
-  const account = accountFromProfile(profile);
-  if (remember) {
-    localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
-    sessionStorage.removeItem('scholarHubCurrentUser');
-  } else {
-    sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
-    localStorage.removeItem('scholarHubCurrentUser');
+  const localUser = getCurrentUser();
+  if (!supabase) return localUser;
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return localUser;
+    const { data: profile, error } = await supabase.from('profiles').select('*').eq('id', session.user.id).single();
+    if (error || !profile) return localUser;
+    const account = accountFromProfile(profile);
+    if (remember) {
+      localStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+      sessionStorage.removeItem('scholarHubCurrentUser');
+    } else {
+      sessionStorage.setItem('scholarHubCurrentUser', JSON.stringify(account));
+      localStorage.removeItem('scholarHubCurrentUser');
+    }
+    if (account.role === 'admin') {
+      const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+      const accounts = (profiles || []).map(accountFromProfile);
+      setAccountsCache(accounts);
+      localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
+    } else {
+      setAccountsCache([account]);
+    }
+    return account;
+  } catch (err) {
+    console.warn('loadCloudSession fallback to local session:', err);
+    return localUser;
   }
-  if (account.role === 'admin') {
-    const { data: profiles } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
-    const accounts = (profiles || []).map(accountFromProfile);
-    setAccountsCache(accounts);
-    localStorage.setItem('scholarHubAccounts', JSON.stringify(accounts));
-  } else {
-    setAccountsCache([account]);
-  }
-  return account;
 };

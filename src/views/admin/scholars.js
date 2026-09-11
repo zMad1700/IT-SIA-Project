@@ -67,12 +67,20 @@ export const adminDetail = type => {
             <p class="hero-page-subtitle">${info[1]}</p>
           </div>
           <div class="hero-header-actions">
+            <button class="secondary-pill-btn" type="button" data-export-excel title="Export scholars list as Excel spreadsheet">
+              ${icon('download', 15)}
+              <span>Export Excel</span>
+            </button>
+            <button class="secondary-pill-btn" type="button" data-open-import-excel title="Import scholars from Excel spreadsheet">
+              ${icon('file-spreadsheet', 15)}
+              <span>Import Excel</span>
+            </button>
+            <button class="secondary-pill-btn" type="button" data-export-scholars>${icon('download', 16)} <span>Export CSV</span></button>
+            <button class="secondary-pill-btn" type="button" data-print-roster>${icon('printer', 16)} <span>Print</span></button>
             <button class="primary-pill-btn" type="button" data-add-scholar>
               ${icon('user-plus', 16)}
               <span>Add Scholar</span>
             </button>
-            <button class="secondary-pill-btn" type="button" data-export-scholars>${icon('download', 16)} <span>Export CSV</span></button>
-            <button class="secondary-pill-btn" type="button" data-print-roster>${icon('printer', 16)} <span>Print</span></button>
           </div>
         </section>
 

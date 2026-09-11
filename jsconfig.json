@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "checkJs": false
+  },
+  "exclude": [
+    "node_modules",
+    "dist",
+    "supabase/functions"
+  ]
+}

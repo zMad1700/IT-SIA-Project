@@ -160,7 +160,7 @@ export const topbar = (admin, currentRoute = 'overview') => {
 };
 
 export const stat = (label, value, trend, iconName, color, detail) => {
-  const clickable = detail !== 'applicants';
+  const clickable = Boolean(detail);
   const tag = clickable ? 'button' : 'article';
   const isUp = trend && trend[0] === '+';
   const trendText = trend || '+3.2%';

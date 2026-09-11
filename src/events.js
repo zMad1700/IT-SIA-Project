@@ -66,7 +66,14 @@ import { scholarshipsPage } from './views/student/scholarships.js';
 import { helpCenterPage } from './views/student/helpCenter.js';
 import { adminHelpRequestsPage } from './views/admin/helpRequests.js';
 import { notificationsPage } from './views/notifications.js';
-import { navigateTo } from './router.js';
+import { navigateTo, getCurrentRoute } from './router.js';
+import {
+  parseExcelFile,
+  importScholarsApi,
+  exportScholarsApi,
+  downloadExcelTemplate
+} from './services/excel.js';
+import { excelImportModalMarkup } from './components/excelModal.js';
 
 export const refresh = () => {
   window.lucide?.createIcons?.();
@@ -344,15 +351,179 @@ export const bind = () => {
     };
   });
 
+  // --- Excel Import & Export Handlers ---
+  document.querySelectorAll('[data-export-excel]').forEach(btn => {
+    btn.onclick = async () => {
+      try {
+        const route = getCurrentRoute();
+        let targetAccounts = null;
+        if (route === 'scholars' || route === 'active-scholars') {
+          targetAccounts = getAdminDetailAccounts();
+        }
+        await withLoading(btn, async () => {
+          const count = (targetAccounts && targetAccounts.length)
+            ? targetAccounts.length
+            : getAccounts().filter(a => a.role === 'user').length;
+          if (count === 0) {
+            showToast('No student scholar records found to export.', 'warning');
+            return;
+          }
+          exportScholarsApi(targetAccounts);
+          showToast(`Exported ${count} scholars to Excel.`, 'success');
+        }, 'Exporting...');
+      } catch (err) {
+        showToast('Export failed: ' + (err.message || 'Unknown error'), 'error');
+      }
+    };
+  });
+
+  document.querySelectorAll('[data-open-import-excel]').forEach(btn => {
+    btn.onclick = () => {
+      const existingModal = document.querySelector('#excel-import-modal');
+      if (existingModal) existingModal.remove();
+
+      document.body.insertAdjacentHTML('beforeend', excelImportModalMarkup());
+      window.lucide?.createIcons?.();
+
+      const modal = document.querySelector('#excel-import-modal');
+      const dropzone = modal.querySelector('#excel-dropzone');
+      const fileInput = modal.querySelector('#excel-file-input');
+      const previewContainer = modal.querySelector('#excel-preview-container');
+      const previewFilename = modal.querySelector('#preview-filename');
+      const previewValidCount = modal.querySelector('#preview-valid-count');
+      const previewTableBody = modal.querySelector('#preview-table-body');
+      const confirmBtn = modal.querySelector('#excel-confirm-btn');
+      const confirmText = modal.querySelector('#excel-confirm-text');
+      const downloadTemplateBtn = modal.querySelector('[data-download-template]');
+
+      let parsedScholars = [];
+
+      const closeModal = () => modal?.remove();
+      modal.querySelectorAll('[data-close-excel-modal]').forEach(closeBtn => {
+        closeBtn.onclick = closeModal;
+      });
+      modal.onclick = e => {
+        if (e.target === modal) closeModal();
+      };
+
+      if (downloadTemplateBtn) {
+        downloadTemplateBtn.onclick = () => {
+          downloadExcelTemplate();
+        };
+      }
+
+      if (dropzone && fileInput) {
+        dropzone.onclick = () => fileInput.click();
+        dropzone.onkeydown = e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            fileInput.click();
+          }
+        };
+
+        dropzone.ondragover = e => {
+          e.preventDefault();
+          dropzone.classList.add('dragover');
+        };
+        dropzone.ondragleave = () => dropzone.classList.remove('dragover');
+        dropzone.ondrop = e => {
+          e.preventDefault();
+          dropzone.classList.remove('dragover');
+          if (e.dataTransfer?.files?.length) {
+            handleFile(e.dataTransfer.files[0]);
+          }
+        };
+
+        fileInput.onchange = e => {
+          if (e.target?.files?.length) {
+            handleFile(e.target.files[0]);
+          }
+        };
+      }
+
+      const handleFile = async file => {
+        if (!file) return;
+        confirmBtn.disabled = true;
+        confirmText.textContent = 'Analyzing spreadsheet...';
+
+        try {
+          const result = await parseExcelFile(file);
+          parsedScholars = result.validRows;
+
+          if (previewContainer) previewContainer.hidden = false;
+          if (previewFilename) previewFilename.textContent = `${file.name} (${result.validRows.length} valid rows)`;
+          if (previewValidCount) previewValidCount.textContent = `${result.validRows.length} Valid Scholars`;
+
+          const previewSlice = result.validRows.slice(0, 5);
+          if (previewTableBody) {
+            previewTableBody.innerHTML = previewSlice
+              .map(
+                s => `
+                <div class="excel-preview-row">
+                  <span class="preview-name">${s.lastName}, ${s.firstName} ${s.middleName ? s.middleName[0] + '.' : ''}</span>
+                  <span class="preview-school">${s.school || '—'}</span>
+                  <span class="preview-course">${s.course || '—'}</span>
+                  <span class="preview-type">${s.scholarType || 'Old scholar'}</span>
+                  <span class="preview-status status-active">Active</span>
+                </div>
+              `
+              )
+              .join('');
+          }
+
+          const previewNote = modal.querySelector('#preview-table-note');
+          if (previewNote) {
+            previewNote.textContent = `Showing preview of first ${previewSlice.length} of ${result.validRows.length} total records from sheet "${result.sheetName}".`;
+          }
+
+          confirmBtn.disabled = false;
+          confirmText.textContent = `Import ${result.validRows.length} Scholars`;
+        } catch (err) {
+          console.error('File parsing error:', err);
+          showToast('Failed to parse Excel file: ' + (err.message || 'Unknown format'), 'error');
+          confirmBtn.disabled = true;
+          confirmText.textContent = 'Select File to Import';
+        }
+      };
+
+      if (confirmBtn) {
+        confirmBtn.onclick = async () => {
+          if (!parsedScholars.length) return;
+          try {
+            await withLoading(confirmBtn, async () => {
+              await importScholarsApi(parsedScholars);
+            }, 'Importing...');
+            closeModal();
+            showToast(`Success! Imported ${parsedScholars.length} scholars into the system.`, 'success');
+            const current = getCurrentRoute();
+            if (current === 'scholars' || current === 'active-scholars' || current === 'total-scholars') {
+              adminDetail(current === 'active-scholars' ? 'scholarships' : current === 'scholars' ? 'scholars' : 'applicants');
+            } else {
+              adminDashboard();
+            }
+            refresh();
+          } catch (err) {
+            showToast('Import failed: ' + (err.message || 'Unknown error'), 'error');
+          }
+        };
+      }
+    };
+  });
+
   document.querySelectorAll('[data-page]').forEach(button => {
-    button.onclick = () => {
-      if (button.dataset.page === 'notifications') navigateTo('notifications');
-      if (button.dataset.page === 'my-profile' && !isAdminSession()) navigateTo('my-profile');
-      if (button.dataset.page === 'help-center' && !isAdminSession()) navigateTo('help-center');
-      if (button.dataset.page === 'registered-accounts' && isAdminSession()) navigateTo('registered-accounts');
-      if (button.dataset.page === 'applications' && isAdminSession()) navigateTo('applications');
-      if (button.dataset.page === 'scholarships') navigateTo('scholarships');
-      if (button.dataset.page === 'overview') navigateTo('overview');
+    button.onclick = event => {
+      event.preventDefault();
+      const page = button.dataset.page;
+      if (!page) return;
+      if (page === 'notifications') return navigateTo('notifications');
+      if (page === 'my-profile' && !isAdminSession()) return navigateTo('my-profile');
+      if (page === 'help-center') return navigateTo(isAdminSession() ? 'help-requests' : 'help-center');
+      if (page === 'help-requests') return navigateTo(isAdminSession() ? 'help-requests' : 'help-center');
+      if (page === 'registered-accounts' && isAdminSession()) return navigateTo('registered-accounts');
+      if (page === 'applications' && isAdminSession()) return navigateTo('applications');
+      if (page === 'scholarships') return navigateTo('scholarships');
+      if (page === 'overview') return navigateTo('overview');
+      navigateTo(page);
     };
   });
 
@@ -1030,18 +1201,28 @@ export const bind = () => {
   setupPasswordMeterAndMatch('#new-password', '#confirm-password', '#profile-password-strength', '#profile-match-hint');
 
   document.querySelectorAll('[data-admin-detail]').forEach(x => {
-    x.onclick = () =>
-      navigateTo(
-        x.dataset.adminDetail === 'scholarships'
-          ? 'active-scholars'
-          : x.dataset.adminDetail === 'scholars'
-            ? 'scholars'
-            : 'help-requests'
-      );
+    x.onclick = event => {
+      event.preventDefault();
+      const detail = x.dataset.adminDetail;
+      if (detail === 'scholarships') navigateTo('active-scholars');
+      else if (detail === 'scholars') navigateTo('scholars');
+      else if (detail === 'applicants') navigateTo('total-scholars');
+      else navigateTo('help-requests');
+    };
   });
 
   document.querySelectorAll('[data-open-help-requests]').forEach(button => {
-    button.onclick = () => navigateTo('help-requests');
+    button.onclick = event => {
+      event.preventDefault();
+      navigateTo('help-requests');
+    };
+  });
+
+  document.querySelectorAll('[data-back-dashboard]').forEach(button => {
+    button.onclick = event => {
+      event.preventDefault();
+      navigateTo('overview');
+    };
   });
 
   document.querySelectorAll('.renewal-document-upload').forEach(input => {

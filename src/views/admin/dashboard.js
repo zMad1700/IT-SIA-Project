@@ -216,6 +216,14 @@ export const adminDashboard = () => {
                 <option value="second-semester" ${dashboardTerm === 'second-semester' ? 'selected' : ''}>Second Semester</option>
               </select>
             </div>
+            <button class="secondary-pill-btn" type="button" data-export-excel title="Export scholars list as Excel spreadsheet">
+              ${icon('download', 15)}
+              <span>Export Excel</span>
+            </button>
+            <button class="secondary-pill-btn" type="button" data-open-import-excel title="Import scholars from Excel spreadsheet">
+              ${icon('file-spreadsheet', 15)}
+              <span>Import Excel</span>
+            </button>
             <button class="primary-pill-btn" type="button" data-add-scholar>
               ${icon('plus', 16)}
               <span>Add Scholar</span>

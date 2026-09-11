@@ -426,8 +426,20 @@ export const getUnreadNotificationsCount = user => {
   return userNotifs.filter(item => !Array.isArray(item.readBy) || !item.readBy.includes(user.email)).length;
 };
 
+export const getRenewalDocs = () => {
+  try {
+    return JSON.parse(localStorage.getItem('scholarHubRenewalDocs') || '[]');
+  } catch {
+    return [];
+  }
+};
+
+export const saveRenewalDocs = docs => {
+  localStorage.setItem('scholarHubRenewalDocs', JSON.stringify(docs));
+};
+
 export const loadCloudWorkspace = async account => {
-  if (!supabase || !account?.id) return;
+  if (!supabase || !account) return;
   const [announcementsResult, reactionsResult, schedulesResult, helpResult, scholarshipsResult, applicationsResult] = await Promise.all([
     supabase.from('announcements').select('*').order('created_at', { ascending: true }),
     supabase.from('announcement_reactions').select('*'),
@@ -510,4 +522,20 @@ export const loadCloudWorkspace = async account => {
 
   if (!scholarshipsResult.error) scholarshipCatalog = scholarshipsResult.data || [];
   if (!applicationsResult.error) applicationsCache = applicationsResult.data || [];
+
+  try {
+    const docsQuery = account.role === 'admin'
+      ? supabase.from('renewal_documents').select('*, profiles!renewal_documents_student_id_fkey(name,email,school,course,year_level)').order('submitted_at', { ascending: false })
+      : account.id
+        ? supabase.from('renewal_documents').select('*').eq('student_id', account.id).order('submitted_at', { ascending: false })
+        : null;
+    if (docsQuery) {
+      const { data: docsData, error: docsError } = await docsQuery;
+      if (!docsError && docsData) {
+        saveRenewalDocs(docsData);
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load cloud renewal documents:', err);
+  }
 };
