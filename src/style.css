@@ -1375,7 +1375,9 @@ body.dark .theme-icon-moon {
 .record-select {
   appearance: none;
   -webkit-appearance: none;
-  border: 1px solid transparent;
+  border: 1px solid var(--line);
+  background-color: var(--card-subtle);
+  color: var(--ink);
   border-radius: var(--radius-pill);
   padding: 6px 26px 6px 12px;
   font-size: 11.5px;
@@ -1391,20 +1393,23 @@ body.dark .theme-icon-moon {
 /* Light theme select status colors */
 .requirement-select.complete,
 .status-select.active,
-.help-status-select.complete {
+.help-status-select.complete,
+.application-action-select.complete {
   background-color: var(--emerald-light);
   color: #047857;
   border: 1px solid rgba(16, 185, 129, 0.25);
 }
 
 .requirement-select.lacking,
-.help-status-select.lacking {
+.help-status-select.lacking,
+.application-action-select.lacking {
   background-color: var(--amber-light);
   color: #b45309;
   border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
-.status-select.non-active {
+.status-select.non-active,
+.application-action-select.non-active {
   background-color: var(--rose-light);
   color: #b91c1c;
   border: 1px solid rgba(239, 68, 68, 0.25);
@@ -1412,25 +1417,31 @@ body.dark .theme-icon-moon {
 
 /* Dark theme select status colors */
 body.dark .record-select {
+  background-color: #172138;
+  color: #f8fafc;
+  border-color: #1e293b;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 
 body.dark .requirement-select.complete,
 body.dark .status-select.active,
-body.dark .help-status-select.complete {
+body.dark .help-status-select.complete,
+body.dark .application-action-select.complete {
   background-color: rgba(16, 185, 129, 0.16);
   color: #34d399;
   border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
 body.dark .requirement-select.lacking,
-body.dark .help-status-select.lacking {
+body.dark .help-status-select.lacking,
+body.dark .application-action-select.lacking {
   background-color: rgba(245, 158, 11, 0.16);
   color: #fbbf24;
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
 
-body.dark .status-select.non-active {
+body.dark .status-select.non-active,
+body.dark .application-action-select.non-active {
   background-color: rgba(239, 68, 68, 0.16);
   color: #f87171;
   border: 1px solid rgba(239, 68, 68, 0.35);

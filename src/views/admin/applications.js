@@ -124,13 +124,18 @@ export const adminApplicationsPage = () => {
                   <div class="application-academic-cell"><strong>${escapeHtml(applicant?.school || 'School not provided')}</strong><small>${escapeHtml([applicant?.course, accountYearLevel(applicant)].filter(Boolean).join(' · ') || 'Academic information unavailable')}</small></div>
                   <small class="date-cell">${application.submitted_at || application.created_at ? postTime(application.submitted_at || application.created_at) : 'Not recorded'}</small>
                   <div><span class="status-pill ${statusClass(status)}">${escapeHtml(statusLabel(status))}</span></div>
-                  <div class="application-actions-cell" style="display:flex;gap:4px;flex-wrap:wrap;">
-                    <button type="button" class="application-action-btn inspect" data-inspect-application="${escapeHtml(application.id)}" title="Inspect documents and credentials">
+                  <div class="application-actions-cell" style="display:flex;align-items:center;gap:8px;">
+                    <button type="button" class="table-edit-btn" data-inspect-application="${escapeHtml(application.id)}" title="Inspect documents and credentials">
                       ${icon('file-text', 13)} Inspect
                     </button>
-                    ${status !== 'Approved' ? `<button type="button" class="application-action-btn approve" data-application-action="approve" data-application-id="${escapeHtml(application.id)}">${icon('check', 13)} Approve</button>` : ''}
-                    ${status !== 'Rejected' ? `<button type="button" class="application-action-btn reject" data-application-action="reject" data-application-id="${escapeHtml(application.id)}">${icon('x', 13)} Reject</button>` : ''}
-                    ${status !== 'Draft' ? `<button type="button" class="application-action-btn resubmit" data-application-action="resubmit" data-application-id="${escapeHtml(application.id)}">${icon('rotate-ccw', 13)} Resubmit</button>` : ''}
+                    <div class="select-pill-wrapper">
+                      <select class="record-select application-action-select ${status === 'Approved' ? 'complete' : status === 'Rejected' ? 'non-active' : status === 'Draft' ? 'lacking' : ''}" data-application-id="${escapeHtml(application.id)}" aria-label="Change application decision">
+                        <option value="" disabled ${!['Approved', 'Rejected', 'Draft'].includes(status) ? 'selected' : ''}>Decision...</option>
+                        <option value="approve" ${status === 'Approved' ? 'selected' : ''}>Approve</option>
+                        <option value="reject" ${status === 'Rejected' ? 'selected' : ''}>Reject</option>
+                        <option value="resubmit" ${status === 'Draft' ? 'selected' : ''}>Resubmit</option>
+                      </select>
+                    </div>
                   </div>
                 </div>`;
               }).join('') : `

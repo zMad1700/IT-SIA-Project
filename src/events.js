@@ -1618,6 +1618,69 @@ export const bind = () => {
     };
   });
 
+  // Application row decision dropdown actions
+  document.querySelectorAll('.application-action-select').forEach(select => {
+    let previousValue = select.value;
+    select.onfocus = () => {
+      previousValue = select.value;
+    };
+    select.onchange = async () => {
+      const application = getApplicationsCache().find(item => String(item.id) === String(select.dataset.applicationId));
+      if (!application) return;
+      const action = select.value;
+      if (!action) return;
+      const accounts = getAccounts();
+      const applicant = accounts.find(account => (account.id && String(account.id) === String(application.student_id)) || account.email === application.student_id);
+      const studentName = applicant ? `${applicant.firstName || ''} ${applicant.lastName || ''}`.trim() || applicant.name : 'this applicant';
+
+      if (action === 'reject') {
+        const remarks = await openPromptModal({
+          title: 'Reject Application',
+          message: `Please specify the feedback or grounds for rejecting ${studentName}'s application (visible to student):`,
+          placeholder: 'e.g. GWA does not meet the minimum 1.75 threshold required for this grant.',
+          confirmText: 'Reject with Remarks'
+        });
+        if (remarks !== null) {
+          await handleApplicationDecision(application, 'reject', remarks);
+        } else {
+          select.value = previousValue;
+        }
+        return;
+      }
+
+      if (action === 'resubmit') {
+        const remarks = await openPromptModal({
+          title: 'Request Resubmission',
+          message: `Specify which documentary requirement or information needs resubmission from ${studentName}:`,
+          placeholder: 'e.g. Please upload an official signed copy of your Certificate of Grades with campus registrar seal.',
+          confirmText: 'Send Resubmission Request'
+        });
+        if (remarks !== null) {
+          await handleApplicationDecision(application, 'resubmit', remarks);
+        } else {
+          select.value = previousValue;
+        }
+        return;
+      }
+
+      if (action === 'approve') {
+        const confirmed = await openConfirmModal({
+          title: 'Approve Scholarship Grant',
+          message: `Are you sure you want to approve ${studentName} for this scholarship grant?`,
+          details: 'The student will be marked as an active scholar in the roster and notified in their portal.',
+          confirmText: 'Approve Grant',
+          type: 'primary',
+          iconName: 'check-circle'
+        });
+        if (confirmed) {
+          await handleApplicationDecision(application, 'approve', 'Congratulations! Your scholarship application has been officially approved.');
+        } else {
+          select.value = previousValue;
+        }
+      }
+    };
+  });
+
   // Batch operations on applications
   const updateBatchBar = () => {
     const checked = document.querySelectorAll('.application-select-row:checked');
