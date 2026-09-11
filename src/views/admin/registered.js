@@ -95,19 +95,19 @@ export const registeredAccountsPage = () => {
           </div>
 
           <div class="modern-data-table-wrap">
-            <div class="table-head-row registered-account-head">
-              <span>STUDENT</span>
-              <span>EMAIL ADDRESS</span>
-              <span>SCHOLAR TYPE</span>
-              <span>SCHOOL &amp; COURSE</span>
-              <span>YEAR</span>
-              <span>REGISTERED DATE</span>
-              <span>ACTIONS</span>
-            </div>
-            <div id="registered-account-rows" class="table-body-rows">
-              ${
-                registeredAccounts.length
-                  ? registeredAccounts
+            ${
+              registeredAccounts.length
+                ? `<div class="table-head-row registered-account-head">
+                    <span>STUDENT</span>
+                    <span>EMAIL ADDRESS</span>
+                    <span>SCHOLAR TYPE</span>
+                    <span>SCHOOL &amp; COURSE</span>
+                    <span>YEAR</span>
+                    <span>REGISTERED DATE</span>
+                    <span>ACTIONS</span>
+                  </div>
+                  <div id="registered-account-rows" class="table-body-rows">
+                    ${registeredAccounts
                       .map(
                         account =>
                           `<div class="table-data-row registered-account-row" data-search="${escapeHtml(
@@ -150,16 +150,14 @@ export const registeredAccountsPage = () => {
                             </div>
                           </div>`
                       )
-                      .join('')
-                  : `
-                    <div class="empty-state-card">
-                      <div class="empty-state-icon-wrap">${icon('users', 26)}</div>
-                      <h3 class="empty-state-title">No Registered Accounts</h3>
-                      <p class="empty-state-desc">No students have self-registered on the portal yet. Registered users will appear here automatically.</p>
-                    </div>
-                  `
-              }
-            </div>
+                      .join('')}
+                  </div>`
+                : `<div class="empty-state-card" style="margin: 32px 0;">
+                    <div class="empty-state-icon-wrap">${icon('users', 26)}</div>
+                    <h3 class="empty-state-title">No Registered Accounts</h3>
+                    <p class="empty-state-desc">No students have self-registered on the portal yet. Registered users will appear here automatically.</p>
+                  </div>`
+            }
           </div>
           <div id="registered-empty" class="empty-state-card" hidden>
             <div class="empty-state-icon-wrap warning">${icon('search-x', 26)}</div>
