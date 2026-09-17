@@ -564,11 +564,14 @@ export const bind = () => {
   }
 
   if (schoolFilter && !document.querySelector('#year-filter')) {
-    schoolFilter.closest('.school-filter').insertAdjacentHTML(
-      'beforebegin',
-      `<label class="school-filter">${icon('calendar-days', 16)}<select id="year-filter" aria-label="Filter by year"><option value="all">All years</option><option>1st Year</option><option>2nd Year</option><option>3rd Year</option><option>4th Year</option></select></label>`
-    );
-    window.lucide?.createIcons?.();
+    const parentContainer = schoolFilter.closest('.school-filter') || schoolFilter.closest('.select-pill-wrapper');
+    if (parentContainer) {
+      parentContainer.insertAdjacentHTML(
+        'beforebegin',
+        `<div class="select-pill-wrapper"><select id="year-filter" class="pill-select compact-select" aria-label="Filter by year"><option value="all">All years</option><option value="1st Year">1st Year</option><option value="2nd Year">2nd Year</option><option value="3rd Year">3rd Year</option><option value="4th Year">4th Year</option></select></div>`
+      );
+      window.lucide?.createIcons?.();
+    }
   }
 
   const applyRecordFilters = () => {

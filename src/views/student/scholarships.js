@@ -42,7 +42,7 @@ export const scholarshipsPage = () => {
         <!-- Hero Header -->
         <section class="dashboard-hero-header">
           <div class="hero-header-text">
-            <button class="pill-back-btn" data-page="overview">
+            <button class="pill-back-btn" data-back-dashboard data-page="overview">
               ${icon('arrow-left', 14)} <span>Back to dashboard</span>
             </button>
             <h1 class="hero-page-title">Explore Scholarships</h1>
