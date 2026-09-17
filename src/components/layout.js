@@ -166,7 +166,7 @@ export const stat = (label, value, trend, iconName, color, detail) => {
   const isUp = trend && trend[0] === '+';
   const trendText = trend || '+3.2%';
 
-  return `<${tag} class="stat-card modern-stat-card ${clickable ? 'stat-link' : 'total-card'}" ${
+  return `<${tag} class="modern-card stat-card modern-stat-card ${clickable ? 'stat-link' : 'total-card'}" ${
     clickable ? `data-admin-detail="${detail}" aria-label="View ${label}"` : ''
   }>
     <div class="stat-card-header">

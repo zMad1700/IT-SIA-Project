@@ -748,17 +748,26 @@ body.dark .theme-icon-moon {
 }
 
 .modern-stat-card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-xl);
+  padding: 24px 26px;
+  box-shadow: var(--shadow-sm);
   text-align: left;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   cursor: pointer;
+  width: 100%;
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .modern-stat-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   box-shadow: var(--shadow-md);
-  border-color: #cbd5e1;
+  border-color: var(--primary-border);
 }
 
 .stat-card-header {
@@ -2742,6 +2751,48 @@ body.dark .demo-chip-btn {
   background: rgba(37, 99, 235, 0.2);
   border-color: rgba(37, 99, 235, 0.4);
   color: #60a5fa;
+}
+
+body.dark .modern-stat-card {
+  background: #131b2e;
+  border-color: #1e293b;
+}
+
+body.dark .modern-stat-card:hover {
+  border-color: rgba(96, 165, 250, 0.5);
+  box-shadow: 0 10px 25px -4px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(37, 99, 235, 0.25);
+}
+
+body.dark .stat-icon-box.blue {
+  background: rgba(37, 99, 235, 0.18);
+  color: #60a5fa;
+}
+
+body.dark .stat-icon-box.cyan {
+  background: rgba(6, 182, 212, 0.18);
+  color: #22d3ee;
+}
+
+body.dark .stat-icon-box.green {
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+}
+
+body.dark .stat-icon-box.purple {
+  background: rgba(139, 92, 246, 0.18);
+  color: #a78bfa;
+}
+
+body.dark .stat-trend-badge.trend-up {
+  background: rgba(16, 185, 129, 0.15);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+body.dark .stat-trend-badge.trend-down {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
 }
 
 /* ==========================================================================
