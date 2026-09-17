@@ -2,9 +2,10 @@
   "name": "scholarship-system",
   "version": "1.0.0",
   "scripts": {
-    "dev": "vite --port 8080",
-    "start": "vite --port 8080",
-    "build": "vite build"
+    "dev": "vite",
+    "start": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "devDependencies": { "vite": "^6.0.0" },
   "dependencies": {
