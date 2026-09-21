@@ -5768,7 +5768,482 @@ body.dark .empty-state-icon-wrap {
   cursor: pointer;
   width: 16px;
   height: 16px;
-  accent-color: var(--primary);
+}
+/* ==========================================================================
+   Comprehensive Responsive Adaptations (Mobile & Tablet Master Rules)
+   ========================================================================== */
+
+@media (max-width: 1080px) {
+  .stats-grid-modern {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 16px !important;
+    margin-bottom: 24px !important;
+  }
+  .dashboard-visuals-grid {
+    grid-template-columns: 1fr !important;
+    gap: 20px !important;
+  }
+  .profile-settings-modern-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .content {
+    padding: 28px 24px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    width: 280px !important;
+    max-width: 82vw !important;
+    transform: translateX(-100%) !important;
+    box-shadow: 12px 0 30px rgba(15, 23, 42, 0.25) !important;
+    z-index: 100 !important;
+  }
+  .sidebar.open {
+    transform: translateX(0) !important;
+  }
+  .sidebar-backdrop {
+    position: fixed !important;
+    inset: 0 !important;
+    background: rgba(15, 23, 42, 0.45) !important;
+    backdrop-filter: blur(2px) !important;
+    z-index: 95 !important;
+    display: none;
+  }
+  body.sidebar-open {
+    overflow: hidden !important;
+  }
+  body.sidebar-open .sidebar-backdrop {
+    display: block !important;
+  }
+  .hamburger {
+    display: grid !important;
+    place-items: center !important;
+    width: 36px !important;
+    height: 36px !important;
+    border: 1px solid var(--line) !important;
+    border-radius: var(--radius-md) !important;
+    background: var(--card) !important;
+  }
+  .content {
+    padding: 20px 16px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .topbar {
+    height: 64px !important;
+    padding: 0 16px !important;
+    width: 100% !important;
+  }
+  .topbar-left {
+    gap: 8px !important;
+  }
+  .topbar-right {
+    gap: 8px !important;
+    flex-shrink: 0 !important;
+  }
+  .breadcrumb-pill {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Topbar user chip: hide text name & role on mobile/tablet */
+  .topbar .user-chip-modern .user-meta-text {
+    display: none !important;
+  }
+  .topbar .user-chip-modern {
+    padding: 2px !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .topbar .user-chip-modern:hover {
+    border-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  /* Checklist items: stacked, clean mobile card layout */
+  .checklist-item-card {
+    display: grid !important;
+    grid-template-columns: auto 1fr !important;
+    gap: 12px !important;
+    padding: 14px 14px !important;
+    align-items: flex-start !important;
+  }
+  .checklist-check-box,
+  .checklist-icon-box {
+    width: 36px !important;
+    height: 36px !important;
+    margin-top: 2px !important;
+  }
+  .checklist-text-col,
+  .checklist-details {
+    grid-column: 2 / -1 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+  .checklist-title-row strong,
+  .checklist-title {
+    font-size: 13.5px !important;
+    line-height: 1.3 !important;
+  }
+  .checklist-text-col p,
+  .checklist-subtitle {
+    font-size: 12px !important;
+    line-height: 1.45 !important;
+    color: var(--muted) !important;
+    margin-top: 4px !important;
+  }
+  .checklist-status-col {
+    grid-column: 1 / -1 !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 10px !important;
+    margin-top: 8px !important;
+    padding-top: 10px !important;
+    border-top: 1px dashed var(--line) !important;
+    width: 100% !important;
+  }
+  .checklist-status-col .status-pill {
+    flex-shrink: 0 !important;
+  }
+  .checklist-upload-btn {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+    text-align: center !important;
+    padding: 8px 12px !important;
+    font-size: 12px !important;
+    min-width: 120px !important;
+  }
+
+  /* Student Applications Tracker card */
+  .application-tracking-card {
+    padding: 14px 14px !important;
+    gap: 12px !important;
+  }
+  .app-tracking-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .app-tracking-meta-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 8px !important;
+    padding: 10px 12px !important;
+  }
+  .app-meta-col:last-child {
+    grid-column: 1 / -1 !important;
+  }
+  .app-meta-col strong {
+    white-space: normal !important;
+    word-break: break-word !important;
+    font-size: 12.5px !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Hero Header and Action Buttons */
+  .dashboard-hero-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    margin-bottom: 18px !important;
+  }
+  .hero-header-text {
+    width: 100% !important;
+  }
+  .hero-header-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .hero-header-actions .select-pill-wrapper {
+    width: 100% !important;
+    flex: 1 1 100% !important;
+  }
+  .hero-header-actions .select-pill-wrapper .pill-select {
+    width: 100% !important;
+  }
+  .hero-header-actions .secondary-pill-btn,
+  .hero-header-actions .primary-pill-btn {
+    flex: 1 1 auto !important;
+    min-width: 100px !important;
+    justify-content: center !important;
+    text-align: center !important;
+    font-size: 11.5px !important;
+    font-weight: 700 !important;
+    padding: 8px 12px !important;
+    white-space: nowrap !important;
+  }
+
+  /* Card Headers & Layouts */
+  .card-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .card-header-actions {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+
+  /* Table Controls, Search & Filter bars */
+  .table-control-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+  }
+  .table-control-actions {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .table-search-pill,
+  .scholarship-search-pill {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .table-header-pills,
+  .application-filter-pills,
+  .category-filter-pills {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+
+  /* Admin & Data Tables Horizontal Overflow Safety */
+  .modern-data-table-wrap {
+    width: 100% !important;
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+  .application-review-head,
+  .application-review-row {
+    min-width: 960px !important;
+  }
+
+  /* Forms & Editors */
+  .modern-form-row,
+  .form-grid-row,
+  .two-fields,
+  .profile-details-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+  .modern-form-row .form-field-group,
+  .modern-form-row .select-pill-wrapper,
+  .modern-form-row .pill-select,
+  .modern-form-row .pill-input {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .form-field-action {
+    width: 100% !important;
+  }
+  .form-field-action .primary-pill-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+  .form-submit-row {
+    width: 100% !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+  }
+  .form-submit-row button,
+  .form-submit-row .primary-pill-btn,
+  .form-submit-row .secondary-pill-btn {
+    flex: 1 1 auto !important;
+    justify-content: center !important;
+  }
+  .active-renewal-deadlines-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  /* Modals */
+  .modal-backdrop-modern {
+    padding: 12px !important;
+  }
+  .modal-card-modern {
+    padding: 20px 16px !important;
+    width: 100% !important;
+    max-width: 95vw !important;
+    max-height: 88vh !important;
+    border-radius: var(--radius-lg) !important;
+  }
+  .modal-actions-row {
+    flex-direction: column-reverse !important;
+    width: 100% !important;
+    gap: 8px !important;
+  }
+  .modal-actions-row button,
+  .modal-actions-row .secondary-pill-btn,
+  .modal-actions-row .primary-pill-btn,
+  .modal-actions-row .danger-pill-btn {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Support Tickets */
+  .help-ticket-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+  }
+  .help-ticket-meta {
+    width: 100% !important;
+    justify-content: space-between !important;
+    flex-wrap: wrap !important;
+  }
+  .help-ticket-summary {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+  .followup-composer-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+  .followup-composer-bar button {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  /* Bulk & Batch Action Bars */
+  .roster-bulk-actions,
+  .application-batch-bar {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+    width: 100% !important;
+  }
+  .application-batch-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+  .application-batch-actions button {
+    flex: 1 1 calc(50% - 6px) !important;
+    justify-content: center !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    height: 58px !important;
+    padding: 0 12px !important;
+  }
+  .topbar-left,
+  .topbar-right {
+    gap: 6px !important;
+  }
+  .round-action-btn,
+  .hamburger {
+    width: 34px !important;
+    height: 34px !important;
+  }
+  .history-pill {
+    width: 30px !important;
+    height: 30px !important;
+  }
+  .content {
+    padding: 14px 12px !important;
+  }
+  .hero-page-title {
+    font-size: 19px !important;
+    line-height: 1.25 !important;
+    margin-bottom: 3px !important;
+    letter-spacing: -0.4px !important;
+  }
+  .hero-page-subtitle {
+    font-size: 12px !important;
+    line-height: 1.4 !important;
+  }
+  .stats-grid-modern {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+    margin-bottom: 16px !important;
+  }
+  .modern-card {
+    padding: 16px 14px !important;
+    border-radius: var(--radius-lg) !important;
+    margin-bottom: 16px !important;
+  }
+  .modern-stat-card {
+    padding: 14px 16px !important;
+    border-radius: var(--radius-lg) !important;
+  }
+  .stat-metric-value {
+    font-size: 22px !important;
+    letter-spacing: -0.5px !important;
+  }
+  .stat-metric-label {
+    font-size: 11.5px !important;
+  }
+  .student-status-hero-card {
+    padding: 16px 14px !important;
+    gap: 14px !important;
+  }
+  .chart-modern-container {
+    height: 160px !important;
+    margin-top: 12px !important;
+  }
+  .bars-modern {
+    padding: 0 4px 0 20px !important;
+    gap: 3px !important;
+  }
+  .bar-col {
+    max-width: 24px !important;
+  }
+  .bar-col-label {
+    font-size: 9px !important;
+  }
+  .donut-visual-wrap {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+  .donut-legend-row {
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    gap: 6px 10px !important;
+    font-size: 10.5px !important;
+  }
+  .notifications-panel-card {
+    width: calc(100vw - 20px) !important;
+    right: -8px !important;
+    max-height: 75vh !important;
+  }
+  .student-kpi-grid,
+  .checklist-grid,
+  .register-modern-grid,
+  .my-applications-grid,
+  .scholarship-cards-grid {
+    grid-template-columns: 1fr !important;
+    gap: 10px !important;
+  }
+  .auth-card-modern {
+    padding: 20px 14px !important;
+    margin: 10px !important;
+    width: calc(100% - 20px) !important;
+    border-radius: var(--radius-lg) !important;
+  }
 }
 
 /* Print Stylesheet for Roster and Directory Export */
