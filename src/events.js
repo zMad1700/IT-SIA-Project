@@ -517,6 +517,8 @@ export const bind = () => {
       event.preventDefault();
       const page = button.dataset.page;
       if (!page) return;
+      document.querySelector('.sidebar')?.classList.remove('open');
+      document.body.classList.remove('sidebar-open');
       if (page === 'notifications') return navigateTo('notifications');
       if (page === 'my-profile' && !isAdminSession()) return navigateTo('my-profile');
       if (page === 'help-center') return navigateTo(isAdminSession() ? 'help-requests' : 'help-center');
@@ -530,9 +532,17 @@ export const bind = () => {
   });
 
   document.querySelectorAll('.open-profile').forEach(chip => {
-    chip.onclick = () => navigateTo('my-profile');
+    chip.onclick = () => {
+      document.querySelector('.sidebar')?.classList.remove('open');
+      document.body.classList.remove('sidebar-open');
+      navigateTo('my-profile');
+    };
     chip.onkeydown = event => {
-      if (event.key === 'Enter' || event.key === ' ') navigateTo('my-profile');
+      if (event.key === 'Enter' || event.key === ' ') {
+        document.querySelector('.sidebar')?.classList.remove('open');
+        document.body.classList.remove('sidebar-open');
+        navigateTo('my-profile');
+      }
     };
   });
 
@@ -545,6 +555,14 @@ export const bind = () => {
   document.querySelector('.sidebar-backdrop')?.addEventListener('click', () => {
     document.querySelector('.sidebar')?.classList.remove('open');
     document.body.classList.remove('sidebar-open');
+  });
+
+  // Escape key closes mobile sidebar drawer
+  window.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && document.body.classList.contains('sidebar-open')) {
+      document.querySelector('.sidebar')?.classList.remove('open');
+      document.body.classList.remove('sidebar-open');
+    }
   });
 
   const profileLoginLabel = document.querySelector('#profile-form input[disabled]')?.closest('label');

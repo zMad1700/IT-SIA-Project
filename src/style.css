@@ -50,23 +50,40 @@
 }
 
 /* Base Reset */
-* {
+*, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
 
-[hidden] {
-  display: none !important;
+html {
+  width: 100%;
+  min-height: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
+  width: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   color: var(--ink);
   background: var(--bg);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+#app {
+  width: 100%;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+[hidden] {
+  display: none !important;
 }
 
 button, input, select, textarea {
@@ -91,8 +108,12 @@ a {
 
 .portal {
   min-height: 100vh;
+  width: 100%;
+  max-width: 100vw;
   display: flex;
   background: var(--bg);
+  overflow-x: hidden;
+  position: relative;
 }
 
 /* Modern Floating Sidebar (Fixed/Sticky on Desktop) */
@@ -339,9 +360,12 @@ a {
 
 .main {
   min-width: 0;
+  width: 100%;
+  max-width: 100%;
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 .topbar {
@@ -354,7 +378,9 @@ a {
   padding: 0 36px;
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 20;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .topbar-left {
@@ -558,10 +584,13 @@ body.dark .theme-icon-moon {
 
 .content {
   flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
   padding: 36px 40px;
   max-width: 1440px;
   width: 100%;
   margin: 0 auto;
+  overflow-x: hidden;
 }
 
 .content > *:last-child {
@@ -726,6 +755,8 @@ body.dark .theme-icon-moon {
   grid-template-columns: repeat(4, 1fr);
   gap: 24px;
   margin-bottom: 32px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .modern-card {
@@ -736,6 +767,9 @@ body.dark .theme-icon-moon {
   box-shadow: var(--shadow-sm);
   transition: all 0.18s ease;
   margin-bottom: 32px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 /* Reset margin on cards inside grid layouts that supply their own gap */
@@ -1098,6 +1132,8 @@ body.dark .theme-icon-moon {
 
 .table-section-card {
   margin-bottom: 26px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .table-control-bar {
@@ -1133,7 +1169,26 @@ body.dark .theme-icon-moon {
 
 .modern-data-table-wrap {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+
+.modern-data-table-wrap::-webkit-scrollbar {
+  height: 6px;
+}
+
+.modern-data-table-wrap::-webkit-scrollbar-track {
+  background: var(--card-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.modern-data-table-wrap::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: var(--radius-pill);
 }
 
 .table-head-row {
@@ -1168,6 +1223,7 @@ body.dark .theme-icon-moon {
 .schedule-table-head, .schedule-table-row {
   grid-template-columns: 1.8fr 2fr 1fr 1fr;
   gap: 14px;
+  min-width: 560px;
 }
 
 .student-record-head, .student-record-row {
@@ -3896,12 +3952,18 @@ body.dark .notification-badge-count {
 @media (max-width: 1080px) {
   .stats-grid-modern {
     grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
   }
   .dashboard-visuals-grid {
     grid-template-columns: 1fr;
+    gap: 20px;
   }
   .profile-settings-modern-grid {
     grid-template-columns: 1fr;
+  }
+  .content {
+    padding: 28px 24px;
   }
 }
 
@@ -3911,8 +3973,11 @@ body.dark .notification-badge-count {
     top: 0;
     bottom: 0;
     left: 0;
+    width: 280px;
+    max-width: 82vw;
     transform: translateX(-100%);
     box-shadow: 12px 0 30px rgba(15, 23, 42, 0.25);
+    z-index: 100;
   }
   .sidebar.open {
     transform: translateX(0);
@@ -3920,73 +3985,318 @@ body.dark .notification-badge-count {
   .sidebar-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.4);
-    z-index: 15;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    z-index: 95;
     display: none;
+  }
+  body.sidebar-open {
+    overflow: hidden;
   }
   body.sidebar-open .sidebar-backdrop {
     display: block;
   }
   .hamburger {
-    display: block;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--card);
   }
   .content {
-    padding: 24px 20px;
+    padding: 20px 16px;
+    width: 100%;
+    max-width: 100%;
   }
   .topbar {
-    padding: 0 20px;
+    height: 64px;
+    padding: 0 16px;
+    width: 100%;
+  }
+  .topbar-left {
+    gap: 8px;
+  }
+  .topbar-right {
+    gap: 8px;
+    flex-shrink: 0;
   }
   .breadcrumb-pill {
     display: none;
   }
 }
 
-@media (max-width: 640px) {
-  .stats-grid-modern {
-    grid-template-columns: 1fr;
+@media (max-width: 768px) {
+  .user-chip-modern .user-meta-text {
+    display: none;
   }
-  .dashboard-hero-header {
-    flex-direction: column;
-    align-items: flex-start;
+  .user-chip-modern {
+    padding: 2px;
+    border: none;
+    background: transparent;
+    box-shadow: none;
   }
-  .hero-header-actions {
-    width: 100%;
-  }
-  .hero-header-actions .primary-pill-btn {
-    flex: 1;
-  }
-  .student-kpi-grid {
-    grid-template-columns: 1fr;
-  }
-  .card-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .two-fields {
-    grid-template-columns: 1fr;
+  .user-chip-modern:hover {
+    border-color: transparent;
+    box-shadow: none;
   }
   .modern-form-row {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .modern-form-row .select-pill-wrapper,
+  .modern-form-row .pill-select,
+  .modern-form-row .pill-input {
+    width: 100%;
+  }
+  .form-field-action {
+    width: 100%;
+  }
+  .form-field-action .primary-pill-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .active-renewal-deadlines-grid {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
   .table-control-actions {
     flex-direction: column;
+    align-items: stretch;
     width: 100%;
+    gap: 8px;
   }
   .table-search-pill {
     width: 100%;
+    min-width: 0;
   }
-  .register-modern-grid {
+  .table-header-pills {
+    flex-wrap: wrap;
+    width: 100%;
+    gap: 8px;
+  }
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  .card-header-actions {
+    width: 100%;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .two-fields,
+  .form-grid-row,
+  .profile-details-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  .help-ticket-summary {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+  .modal-backdrop-modern {
+    padding: 12px;
+  }
+  .modal-card-modern {
+    padding: 20px 16px;
+    width: 100%;
+    max-height: 88vh;
+    border-radius: var(--radius-lg);
+  }
+  .modal-card-header {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .modal-title {
+    font-size: 16px;
+  }
+  .modal-actions-row {
+    flex-direction: column-reverse;
+    width: 100%;
+    gap: 8px;
+  }
+  .modal-actions-row button,
+  .modal-actions-row .secondary-pill-btn,
+  .modal-actions-row .primary-pill-btn,
+  .modal-actions-row .danger-pill-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 640px) {
+  .topbar {
+    height: 58px;
+    padding: 0 12px;
+  }
+  .topbar-left {
+    gap: 6px;
+  }
+  .topbar-right {
+    gap: 6px;
+  }
+  .round-action-btn {
+    width: 34px;
+    height: 34px;
+  }
+  .hamburger {
+    width: 34px;
+    height: 34px;
+  }
+  .history-pill {
+    width: 30px;
+    height: 30px;
+  }
+  .content {
+    padding: 14px 12px;
+  }
+  .dashboard-hero-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .hero-header-text {
+    width: 100%;
+  }
+  .hero-page-title {
+    font-size: 19px;
+    line-height: 1.25;
+    margin-bottom: 3px;
+    letter-spacing: -0.4px;
+  }
+  .hero-page-subtitle {
+    font-size: 12px;
+    line-height: 1.4;
+  }
+  .hero-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    width: 100%;
+  }
+  .hero-header-actions .select-pill-wrapper {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+  .hero-header-actions .select-pill-wrapper .pill-select {
+    width: 100%;
+    font-size: 12px;
+    padding: 9px 30px 9px 12px;
+  }
+  .hero-header-actions .secondary-pill-btn,
+  .hero-header-actions .primary-pill-btn {
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 75px;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 8px 6px;
+    text-align: center;
+    white-space: nowrap;
+    gap: 4px;
+  }
+  .stats-grid-modern {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .modern-card {
+    padding: 16px 14px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 16px;
+  }
+  .modern-stat-card {
+    padding: 14px 16px;
+    border-radius: var(--radius-lg);
+  }
+  .stat-metric-value {
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+  .stat-metric-label {
+    font-size: 11.5px;
+  }
+  .stat-card-header {
+    margin-bottom: 8px;
+  }
+  .stat-card-body {
+    margin-bottom: 6px;
+  }
+  .stat-card-footer {
+    font-size: 11px;
+  }
+  .chart-modern-container {
+    height: 160px;
+    margin-top: 12px;
+  }
+  .bars-modern {
+    padding: 0 4px 0 20px;
+    gap: 3px;
+  }
+  .bar-col {
+    max-width: 24px;
+  }
+  .bar-col-label {
+    font-size: 9px;
+  }
+  .donut-visual-wrap {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .donut-legend-row {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 6px 10px;
+    font-size: 10.5px;
+  }
+  .notifications-panel-card {
+    width: calc(100vw - 20px);
+    right: -8px;
+    max-height: 75vh;
+  }
+  .student-kpi-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
   .checklist-grid {
     grid-template-columns: 1fr;
+    gap: 10px;
   }
-  .notifications-panel-card {
-    width: min(360px, calc(100vw - 32px));
-    right: -10px;
+  .register-modern-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
   .hero-status-meta {
-    gap: 16px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .auth-card-modern {
+    padding: 20px 14px;
+    margin: 10px;
+    width: calc(100% - 20px);
+    border-radius: var(--radius-lg);
+  }
+  .my-applications-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .scholarship-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .app-tracking-meta-grid {
+    grid-template-columns: 1fr;
+    gap: 6px;
+  }
+  .application-tracking-card {
+    padding: 14px;
+    gap: 10px;
   }
 }
 
